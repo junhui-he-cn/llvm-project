@@ -321,6 +321,7 @@ enum {
   EM_VE = 251,            // NEC SX-Aurora VE
   EM_CSKY = 252,          // C-SKY 32-bit processor
   EM_LOONGARCH = 258,     // LoongArch
+  EM_HCPU = 999,          // HCPU
 };
 
 // Object file classes.
@@ -1037,6 +1038,17 @@ enum : unsigned {
 // ELF Relocation types for Xtensa
 enum {
 #include "ELFRelocs/Xtensa.def"
+};
+
+enum : unsigned {
+  EF_HCPU_NOREORDER = 0x00000001, // Don't reorder instructions
+  EF_HCPU_PIC       = 0x00000002, // Position independent code
+  EF_HCPU_ARCH_32   = 0x50000000, // HCPU instruction set per linux not elf.h
+  EF_HCPU_ARCH      = 0xf0000000  // Mask for applying EF_HCPU_ARCH_ variant
+};
+
+enum {
+#include "ELFRelocs/HCPU.def"
 };
 
 #undef ELF_RELOC

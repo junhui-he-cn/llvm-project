@@ -1,0 +1,1 @@
+def GPROut : RegisterClass<"HCPU", [i32], 32, (add (sub CPURegs, SW))>;

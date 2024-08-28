@@ -9,17 +9,21 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/MC/MCSchedule.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/SubtargetFeature.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <optional>
 
 using namespace llvm;
+
+bool HCPUDisableUnreconginizedMessage = false;
 
 /// Find KV in array using binary search.
 template <typename T>
@@ -79,6 +83,7 @@ static void ApplyFeatureFlag(FeatureBitset &Bits, StringRef Feature,
       ClearImpliedBits(Bits, FeatureEntry->Value, FeatureTable);
     }
   } else {
+    if (!HCPUDisableUnreconginizedMessage)
     errs() << "'" << Feature << "' is not a recognized feature for this target"
            << " (ignoring feature)\n";
   }
@@ -210,6 +215,11 @@ void MCSubtargetInfo::InitMCProcessorInfo(StringRef CPU, StringRef TuneCPU,
                                           StringRef FS) {
   FeatureBits = getFeatures(CPU, TuneCPU, FS, ProcDesc, ProcFeatures);
   FeatureString = std::string(FS);
+  
+  #if 1
+  if (TargetTriple.getArch() == llvm::Triple::hcpu)
+    HCPUDisableUnreconginizedMessage = true;
+  #endif
 
   if (!TuneCPU.empty())
     CPUSchedModel = &getSchedModelForCPU(TuneCPU);
@@ -283,6 +293,7 @@ FeatureBitset MCSubtargetInfo::ToggleFeature(StringRef Feature) {
                      ProcFeatures);
     }
   } else {
+    if (!HCPUDisableUnreconginizedMessage)
     errs() << "'" << Feature << "' is not a recognized feature for this target"
            << " (ignoring feature)\n";
   }
@@ -316,6 +327,9 @@ const MCSchedModel &MCSubtargetInfo::getSchedModelForCPU(StringRef CPU) const {
 
   if (!CPUEntry) {
     if (CPU != "help") // Don't error if the user asked for help.
+      #if 1
+      if (TargetTriple.getArch() != llvm::Triple::hcpu);
+      #endif
       errs() << "'" << CPU
              << "' is not a recognized processor for this target"
              << " (ignoring processor)\n";
