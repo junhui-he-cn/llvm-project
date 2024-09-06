@@ -19,8 +19,8 @@
 #include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
-  class HCPUTargetMachine;
-  class FunctionPass;
-} // end namespace llvm;
+class HCPUTargetMachine;
+class FunctionPass;
+} // namespace llvm
 
 #endif

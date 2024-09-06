@@ -10,21 +10,34 @@ tablegen(LLVM HCPUGenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM HCPUGenInstrInfo.inc -gen-instr-info)
 tablegen(LLVM HCPUGenSubtargetInfo.inc -gen-subtarget)
 tablegen(LLVM HCPUGenMCPseudoLowering,inc -gen-pseudo-lowering)
+tablegen(LLVM HCPUGenDAGIsel.inc -gen-dag-isel)
+tablegen(LLVM HCPUGenCallingConv.inc -gen-callingconv)
 
 # HCPUCommonTableGen must be defined
 add_public_tablegen_target(HCPUCommonTableGen)
 
 add_llvm_target(HCPUCodeGen
+  HCPUFrameLowering.cpp
+  HCPUInstrInfo.cpp
+  HCPUISelLowering.cpp
+  HCPUMachineFunction.cpp
+  HCPURegisterInfo.cpp
+  HCPUSEFrameLowering.cpp
+  HCPUSEInstrInfo.cpp
+  HCPUSEISelLowering.cpp
+  HCPUSERegisterInfo.cpp
+  HCPUSubtarget.cpp
+  HCPUTargetObjectFile.cpp
   HCPUTargetMachine.cpp
 
   LINK_COMPONENTS
+  HCPUDesc
+  HCPUInfo
   Analysis
   AsmPrinter
   CodeGen
   Core
   MC
-  HCPUDesc
-  HCPUInfo
   SelectionDAG
   Support
   Target

@@ -8,16 +8,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "../HCPU.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/IR/Module.h"
+#include "HCPUTargetInfo.h"
 #include "llvm/MC/TargetRegistry.h"
 using namespace llvm;
 
-Target &getTheHCPUTarget() {
+Target &llvm::getTheHCPUTarget() {
   static Target TheHCPUTarget;
   return TheHCPUTarget;
 }
 
-extern "C" void LLVMInitializeHCPUTargetInfo() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeHCPUTargetInfo() {
   RegisterTarget<Triple::hcpu, true> X(getTheHCPUTarget(), "hcpu", "HCPU", "HCPU");
 }

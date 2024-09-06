@@ -19,7 +19,25 @@ def SDT_HCPURet : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
 def HCPURet : SDNode<"HCPUISD::Ret", SDTNone, [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
+//===----------------------------------------------------------------------===//
+// Cpu0 Instruction Predicate Definitions.
+//===----------------------------------------------------------------------===//
+
+def EnableOverflow : Predicate<"Subtarget->enableOverflow()">;
+def DisableOverflow : Predicate<"Subtarget->disableOverflow()">;
+
+def HasCmp : Predicate<"Subtarget->hasCmp()">;
+def HasSlt : Predicate<"Subtarget->hasSlt()">;
+
+//===----------------------------------------------------------------------===//
+// Instruction format superclass
+//===----------------------------------------------------------------------===//
+
 include "HCPUInstrFormats.td"
+
+//===----------------------------------------------------------------------===//
+// Cpu0 Operand, Complex Patterns and Transformations Definitions.
+//===----------------------------------------------------------------------===//
 
 def simm16 : Operand<i32> {
   let DecoderMethod = "DecodeSimm16";

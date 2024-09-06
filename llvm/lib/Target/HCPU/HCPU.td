@@ -13,6 +13,7 @@
 
 include "HCPUSchedule.td"
 include "HCPUInstrInfo.td"
+include "HCPUCallingConv.td"
 
 def HCPUInstrInfo : InstrInfo;
 //===----------------------------------------------------------------------===//
@@ -29,3 +30,18 @@ def HCPU : Target {
 }
 
 def : ProcessorModel<"generic", NoSchedModel, []>;
+
+def FeatureCmp : SubtargetFeature<"cmp", "HasCmp", "true", "Enable cmp instructions">;
+def FeatureSlt : SubtargetFeature<"slt", "HasSlt", "true", "Enable slt instructions">;
+
+def FeatureHCPU32I : SubtargetFeature<"HCPU32I", "HCPUArchVersion", "HCPU32I",
+  "HCPU32I ISA Support", [FeatureCmp]>;
+
+def FeatureHCPU32II : SubtargetFeature<"HCPU32II", "HCPUArchVersion", "HCPU32II",
+  "HCPU32I ISA Support (slt)", [FeatureCmp, FeatureSlt]>;
+
+class Proc<string Name, list<SubtargetFeature> Features>
+ :Processor<Name, HCPUGenericItineraries, Features>;
+
+def : Proc<"HCPU32I", [FeatureHCPU32I]>;
+def : Proc<"HCPU32II", [FeatureHCPU32II]>;
