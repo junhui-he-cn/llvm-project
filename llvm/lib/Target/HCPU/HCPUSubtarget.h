@@ -53,10 +53,9 @@ protected:
 
   const SelectionDAGTargetInfo TSInfo;
 
-  
+  std::unique_ptr<const HCPUInstrInfo> InstrInfo; 
   std::unique_ptr<const HCPUFrameLowering> FrameLowering;
   std::unique_ptr<const HCPUTargetLowering> TLInfo;
-  std::unique_ptr<const HCPUInstrInfo> InstrInfo;
 
 public:
   bool isPositionIndependent() const;

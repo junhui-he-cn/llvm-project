@@ -454,7 +454,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("loongarch64", loongarch64)
     .Case("dxil", dxil)
     .Case("xtensa", xtensa)
-    .Case("hpcu", hcpu)
+    .Case("hcpu", hcpu)
     .Default(UnknownArch);
 }
 

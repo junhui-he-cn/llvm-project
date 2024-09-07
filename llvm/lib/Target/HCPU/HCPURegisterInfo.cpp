@@ -36,7 +36,7 @@
 using namespace llvm;
 
 HCPURegisterInfo::HCPURegisterInfo(const HCPUSubtarget &ST)
-    : HCPUGenRegisterInfo(HCPU::LR), Subtarget(ST) {}
+    : HCPUGenRegisterInfo(HCPU::LR), Subtarget(ST) { }
 
 //===----------------------------------------------------------------------===//
 // Callee Saved Registers methods
