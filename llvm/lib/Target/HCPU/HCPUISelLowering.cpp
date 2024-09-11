@@ -68,7 +68,15 @@ const char *HCPUTargetLowering::getTargetNodeName(unsigned Opcode) const {
 
 HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
                                        const HCPUSubtarget &STI)
-    : TargetLowering(TM), Subtarget(STI), ABI(TM.getABI()) {}
+    : TargetLowering(TM), Subtarget(STI), ABI(TM.getABI()) {
+  // HCPU Custom Operations
+
+  // Operations not directly supported by HCPU.
+
+  //- Set .align 2
+  // It will emit .align 2 later
+  setMinFunctionAlignment(Align(2));
+}
 
 const HCPUTargetLowering *
 HCPUTargetLowering::create(const HCPUTargetMachine &TM,

@@ -328,7 +328,7 @@ const MCSchedModel &MCSubtargetInfo::getSchedModelForCPU(StringRef CPU) const {
   if (!CPUEntry) {
     if (CPU != "help") // Don't error if the user asked for help.
       #if 1
-      if (TargetTriple.getArch() != llvm::Triple::hcpu);
+      if (TargetTriple.getArch() != llvm::Triple::hcpu)
       #endif
       errs() << "'" << CPU
              << "' is not a recognized processor for this target"

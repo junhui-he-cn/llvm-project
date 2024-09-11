@@ -96,9 +96,9 @@ class LoadM<bits<8> op, string instr_asm, PatFrag OpNode, RegisterClass RC,
 
 class StoreM<bits<8> op, string instr_asm, PatFrag OpNode, RegisterClass RC,
             Operand MemOpnd, bit Pseudo>:
-  FMem<op, (outs RC:$ra), (ins MemOpnd:$addr),
+  FMem<op, (outs), (ins RC:$ra, MemOpnd:$addr),
       !strconcat(instr_asm, "\t$ra, $addr"),
-      [(OpNode RC:$ra,  addr:$addr)], IIStore> {
+      [(OpNode RC:$ra, addr:$addr)], IIStore> {
   let isPseudo = Pseudo;
 }
 

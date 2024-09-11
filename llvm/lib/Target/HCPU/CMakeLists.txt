@@ -12,6 +12,9 @@ tablegen(LLVM HCPUGenSubtargetInfo.inc -gen-subtarget)
 tablegen(LLVM HCPUGenMCPseudoLowering,inc -gen-pseudo-lowering)
 tablegen(LLVM HCPUGenDAGIsel.inc -gen-dag-isel)
 tablegen(LLVM HCPUGenCallingConv.inc -gen-callingconv)
+tablegen(LLVM HCPUGenCodeEmitter.inc -gen-emitter)
+tablegen(LLVM HCPUGenMCCodeEmitter.inc -gen-emitter)
+tablegen(LLVM HCPUGenAsmWriter.inc -gen-asm-writer)
 
 # HCPUCommonTableGen must be defined
 add_public_tablegen_target(HCPUCommonTableGen)
@@ -29,10 +32,13 @@ add_llvm_target(HCPUCodeGen
   HCPUSubtarget.cpp
   HCPUTargetObjectFile.cpp
   HCPUTargetMachine.cpp
+  HCPUAsmPrinter.cpp
+  HCPUMCInstLower.cpp
 
   LINK_COMPONENTS
   HCPUDesc
   HCPUInfo
+  HCPUAsmPrinter
   Analysis
   AsmPrinter
   CodeGen
@@ -49,3 +55,4 @@ add_llvm_target(HCPUCodeGen
 
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
+add_subdirectory(InstPrinter)
