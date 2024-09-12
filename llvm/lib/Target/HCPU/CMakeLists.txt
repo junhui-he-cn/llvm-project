@@ -10,7 +10,7 @@ tablegen(LLVM HCPUGenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM HCPUGenInstrInfo.inc -gen-instr-info)
 tablegen(LLVM HCPUGenSubtargetInfo.inc -gen-subtarget)
 tablegen(LLVM HCPUGenMCPseudoLowering,inc -gen-pseudo-lowering)
-tablegen(LLVM HCPUGenDAGIsel.inc -gen-dag-isel)
+tablegen(LLVM HCPUGenDAGISel.inc -gen-dag-isel)
 tablegen(LLVM HCPUGenCallingConv.inc -gen-callingconv)
 tablegen(LLVM HCPUGenCodeEmitter.inc -gen-emitter)
 tablegen(LLVM HCPUGenMCCodeEmitter.inc -gen-emitter)
@@ -25,10 +25,12 @@ add_llvm_target(HCPUCodeGen
   HCPUISelLowering.cpp
   HCPUMachineFunction.cpp
   HCPURegisterInfo.cpp
+  HCPUISelDAGToDAG.cpp
   HCPUSEFrameLowering.cpp
   HCPUSEInstrInfo.cpp
   HCPUSEISelLowering.cpp
   HCPUSERegisterInfo.cpp
+  HCPUSEISelDAGToDAG.cpp
   HCPUSubtarget.cpp
   HCPUTargetObjectFile.cpp
   HCPUTargetMachine.cpp

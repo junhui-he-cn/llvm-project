@@ -57,13 +57,13 @@ def addr:
 class AlignedLoad<PatFrag Node> :
   PatFrag<(ops node:$ptr), (Node node:$ptr), [{
   LoadSDNode *LD = cast<LoadSDNode>(N);
-  return LD->getMemoryVT().getSizeInBits()/8 <= LD->getAlignment();
+  return (LD->getMemoryVT().getSizeInBits()/8) <= LD->getAlign().value();
 }]>;
 
 class AlignedStore<PatFrag Node> :
   PatFrag<(ops node:$val, node:$ptr), (Node node:$val, node:$ptr), [{
   StoreSDNode *SD = cast<StoreSDNode>(N);
-  return SD->getMemoryVT().getSizeInBits()/8 <= SD->getAlignment();
+  return (SD->getMemoryVT().getSizeInBits()/8) <= SD->getAlign().value();
 }]>;
 
 def load_a : AlignedLoad<load>;

@@ -17,10 +17,14 @@
 
 #include "MCTargetDesc/HCPUMCTargetDesc.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/PassRegistry.h"
 
 namespace llvm {
 class HCPUTargetMachine;
 class FunctionPass;
+
+
+void initializeHCPUDAGToDAGISelLegacyPass(PassRegistry &);
 } // namespace llvm
 
 #endif

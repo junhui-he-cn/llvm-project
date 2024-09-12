@@ -14,9 +14,11 @@
 #include "HCPUTargetMachine.h"
 #include "HCPU.h"
 
+#include "HCPUInstrInfo.h"
 #include "HCPUSubtarget.h"
 #include "HCPUTargetObjectFile.h"
 #include "MCTargetDesc/HCPUABIInfo.h"
+#include "HCPUSEISelDAGToDAG.h"
 #include "TargetInfo/HCPUTargetInfo.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Attributes.h"
@@ -111,6 +113,7 @@ HCPUTargetMachine::getSubtargetImpl(const Function &F) const {
     resetTargetOptions(F);
     I = std::make_unique<HCPUSubtarget>(TargetTriple, CPU, FS, isLittle, *this);
   }
+  return I.get();
 }
 
 namespace {
@@ -128,9 +131,18 @@ public:
   const HCPUSubtarget &getHCPUSubtarget() const {
     return *getHCPUTargetMachine().getSubtargetImpl();
   }
+
+  bool addInstSelector() override;
 };
 } // namespace
 
 TargetPassConfig *HCPUTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new HCPUPassConfig(*this, PM);
+}
+
+// Install an instruction selector pass using
+// the ISelDag to gen HCPU code.
+bool HCPUPassConfig::addInstSelector() {
+  addPass(createHCPUSEISelDag(getHCPUTargetMachine(), getOptLevel()));
+  return false;
 }
