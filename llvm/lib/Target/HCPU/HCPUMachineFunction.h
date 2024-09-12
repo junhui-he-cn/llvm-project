@@ -25,7 +25,8 @@ namespace llvm {
 class HCPUFunctionInfo : public MachineFunctionInfo {
 public:
   HCPUFunctionInfo(MachineFunction &MF)
-      : MF(MF), VarArgsFrameIndex(0), MaxCallFrameSize(0), EmitNOAT(false) {}
+      : MF(MF), VarArgsFrameIndex(0), MaxCallFrameSize(0), EmitNOAT(false),
+        SRetReturnReg(0), CallsEhReturn(false), CallsEhDwarf(false) {}
 
   ~HCPUFunctionInfo();
 
@@ -34,6 +35,15 @@ public:
 
   bool getEmitNOAT() const { return EmitNOAT; }
   void setEmitNOAT() { EmitNOAT = true; }
+
+  unsigned getSRetReturnReg() const { return SRetReturnReg; }
+  void setSRetReturnReg(unsigned Reg) { SRetReturnReg = Reg; }
+
+  bool hasByvalArg() const { return HasByvalArg; }
+  void setFormalArgInfo(unsigned Size, bool HasByval) {
+    IncomingArgSize = Size;
+    HasByvalArg = HasByval;
+  }
 
 private:
   virtual void anchor();
@@ -46,6 +56,25 @@ private:
   unsigned MaxCallFrameSize;
 
   bool EmitNOAT;
+
+  /// SRetReturnReg - Some subtargets require that sret lowering includes
+  /// returning the value of the returned struct in a register. This field
+  /// holds the virtual register into which the sret argument is passed.
+  unsigned SRetReturnReg;
+  /// True if function has a byval argument.
+  bool HasByvalArg;
+
+  /// Size of incoming argument area.
+  unsigned IncomingArgSize;
+
+  /// CallsEhReturn - Whether the function calls llvm.eh.return.
+  bool CallsEhReturn;
+
+  /// CallsEhDwarf - Whether the function calls llvm.eh.dwarf.
+  bool CallsEhDwarf;
+
+  /// Frame objects for spilling eh data registers.
+  int EhDataRegFI[2];
 };
 } // namespace llvm
 

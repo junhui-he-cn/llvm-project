@@ -113,6 +113,117 @@ HCPUTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
                                 const SmallVectorImpl<ISD::OutputArg> &Outs,
                                 const SmallVectorImpl<SDValue> &OutVals,
                                 const SDLoc &DL, SelectionDAG &DAG) const {
-  return DAG.getNode(HCPUISD::Ret, DL, MVT::Other, Chain,
-                     DAG.getRegister(HCPU::LR, MVT::i32));
+  // CCValAssign - represent the assignment of
+  // the return value to a location
+  SmallVector<CCValAssign, 16> RVLocs;
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  // CCState - Info about the registers and stack slot.
+  CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, *DAG.getContext());
+  HCPUCC HCPUCCInfo(CallConv, ABI.IsO32(), CCInfo);
+
+  // Analyze return values.
+  HCPUCCInfo.analyzeReturn(Outs, Subtarget.abiUsesSoftFloat(),
+                           MF.getFunction().getReturnType());
+
+  SDValue Flag;
+  SmallVector<SDValue, 4> RetOps(1, Chain);
+
+  // Copy the result values into the output registers.
+  for (unsigned i = 0; i != RVLocs.size(); ++i) {
+    SDValue Val = OutVals[i];
+    CCValAssign &VA = RVLocs[i];
+    assert(VA.isRegLoc() && "Can only return in registers!");
+
+    if (RVLocs[i].getValVT() != RVLocs[i].getLocVT())
+      Val = DAG.getNode(ISD::BITCAST, DL, RVLocs[i].getLocVT(), Val);
+
+    Chain = DAG.getCopyToReg(Chain, DL, VA.getLocReg(), Val, Flag);
+
+    // Guarantee that all emitted copies are stuck together with flags.
+    Flag = Chain.getValue(1);
+    RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
+  }
+
+  // The HCPU ABIs for returning structs by value requires that we copy
+  // the sret argument into $v0 for the return. We saved the argument into
+  // a virtual register in the entry block, so now we copy the value out
+  // and into $v0.
+  if (MF.getFunction().hasStructRetAttr()) {
+    HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
+    unsigned Reg = HCPUFI->getSRetReturnReg();
+
+    if (!Reg)
+      llvm_unreachable("sret virtual register not created in the entry block");
+    SDValue Val =
+        DAG.getCopyFromReg(Chain, DL, Reg, getPointerTy(DAG.getDataLayout()));
+    unsigned V0 = HCPU::V0;
+
+    Chain = DAG.getCopyToReg(Chain, DL, V0, Val, Flag);
+    Flag = Chain.getValue(1);
+    RetOps.push_back(DAG.getRegister(V0, getPointerTy(DAG.getDataLayout())));
+  }
+
+  RetOps[0] = Chain; // Update chain.
+
+  // Add the flag if we have it.
+  if (Flag.getNode())
+    RetOps.push_back(Flag);
+
+  // Return on HCPU is always a "ret $lr"
+  return DAG.getNode(HCPUISD::Ret, DL, MVT::Other, RetOps);
+}
+
+HCPUTargetLowering::HCPUCC::HCPUCC(
+  CallingConv::ID CC, bool IsO32_, CCState &Info,
+  HCPUCC::SpecialCallingConvType SpecialCallingConv_)
+  : CCInfo(Info), CallConv(CC), IsO32(IsO32_) {
+  // Pre-allocate reserved argument area.
+  CCInfo.AllocateStack(reservedArgArea(), Align(1));
+}
+
+
+template<typename Ty>
+void HCPUTargetLowering::HCPUCC::
+analyzeReturn(const SmallVectorImpl<Ty> &RetVals, bool IsSoftFloat,
+              const SDNode *CallNode, const Type *RetTy) const {
+  CCAssignFn *Fn;
+
+  Fn = RetCC_HCPU;
+
+  for (unsigned I = 0, E = RetVals.size(); I < E; ++I) {
+    MVT VT = RetVals[I].VT;
+    ISD::ArgFlagsTy Flags = RetVals[I].Flags;
+    MVT RegVT = this->getRegVT(VT, IsSoftFloat);
+
+    if (Fn(I, VT, RegVT, CCValAssign::Full, Flags, this->CCInfo)) {
+#ifndef NDEBUG
+      dbgs() << "Call result #" << I << " has unhandled type "
+             << EVT(VT).getEVTString() << '\n';
+#endif
+      llvm_unreachable(nullptr);
+    }
+  }
+}
+
+void HCPUTargetLowering::HCPUCC::
+analyzeCallResult(const SmallVectorImpl<ISD::InputArg> &Ins, bool IsSoftFloat,
+                  const SDNode *CallNode, const Type *RetTy) const {
+  analyzeReturn(Ins, IsSoftFloat, CallNode, RetTy);
+}
+
+void HCPUTargetLowering::HCPUCC::
+analyzeReturn(const SmallVectorImpl<ISD::OutputArg> &Outs, bool IsSoftFloat,
+              const Type *RetTy) const {
+  analyzeReturn(Outs, IsSoftFloat, nullptr, RetTy);
+}
+unsigned HCPUTargetLowering::HCPUCC::reservedArgArea() const {
+  return (IsO32 && (CallConv != CallingConv::Fast)) ? 8 : 0;
+}
+MVT HCPUTargetLowering::HCPUCC::getRegVT(MVT VT,
+                                         bool IsSoftFloat) const {
+  if (IsSoftFloat || IsO32)
+    return VT;
+
+  return VT;
 }

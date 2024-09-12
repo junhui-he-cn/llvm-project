@@ -142,3 +142,7 @@ let addr = 0 in
 
 def : Pat<(i32 immSExt16: $in),
           (ADDiu ZERO, imm:$in)>;
+
+let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1 in {
+  def RetLR : HCPUPseudo<(outs), (ins), "", [(HCPURet)]>;
+}

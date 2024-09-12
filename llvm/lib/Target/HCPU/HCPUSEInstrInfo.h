@@ -15,8 +15,9 @@
 #define LLVM_LIB_TARGET_HCPU_HCPUSEINSTRINFO_H
 
 #include "HCPUInstrInfo.h"
-#include "HCPUSERegisterInfo.h"
 #include "HCPUMachineFunction.h"
+#include "HCPUSERegisterInfo.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
 
 namespace llvm {
 
@@ -27,10 +28,13 @@ public:
   explicit HCPUSEInstrInfo(const HCPUSubtarget &STI);
 
   const HCPURegisterInfo &getRegisterInfo() const override;
-  
+
+  bool expandPostRAPseudo(MachineInstr &MI) const override;
+
+private:
+  void expandRetLR(MachineBasicBlock &MBB, MachineBasicBlock::iterator I) const;
 };
 
-}
+} // namespace llvm
 
 #endif
-

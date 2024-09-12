@@ -36,3 +36,23 @@ const HCPUInstrInfo *llvm::createHCPUSEInstrInfo(const HCPUSubtarget &STI) {
   return new HCPUSEInstrInfo(STI);
 }
 
+/// Expand Pseudo instructions into real backend instructions
+bool HCPUSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
+//@expandPostRAPseudo-body
+  MachineBasicBlock &MBB = *MI.getParent();
+
+  switch (MI.getDesc().getOpcode()) {
+  default:
+    return false;
+  case HCPU::RetLR:
+    expandRetLR(MBB, MI);
+    break;
+  }
+
+  MBB.erase(MI);
+  return true;
+}
+void HCPUSEInstrInfo::expandRetLR(MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator I) const {
+  BuildMI(MBB, I, I->getDebugLoc(), get(HCPU::RET)).addReg(HCPU::LR);
+}

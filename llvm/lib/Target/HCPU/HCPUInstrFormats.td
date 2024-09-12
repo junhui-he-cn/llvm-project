@@ -103,5 +103,12 @@ class FJ<bits<8> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 
   let Opcode = op;
 
-  let Inst{23-0} = addr; 
+  let Inst{23-0} = addr;
+}
+
+// HCPU Pseudo Instructions Format
+class HCPUPseudo<dag outs, dag ins, string asmstr, list<dag> pattern>: 
+  HCPUInst<outs, ins, asmstr, pattern, IIPseudo, Pseudo> {
+  let isCodeGenOnly = 1;
+  let isPseudo = 1;
 }
