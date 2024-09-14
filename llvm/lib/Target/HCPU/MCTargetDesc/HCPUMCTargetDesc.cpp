@@ -45,11 +45,11 @@ static std::string selectHCPUArchFeature(const Triple &TT, StringRef CPU) {
   std::string HCPUArchFeature;
   if (CPU.empty() || CPU == "generic") {
     if (TT.getArch() == Triple::hcpu) {
-      if (CPU.empty() || CPU == "HCPU32II") {
-        HCPUArchFeature = "+HCPU32II";
+      if (CPU.empty() || CPU == "hcpu32II") {
+        HCPUArchFeature = "+hcpu32II";
       } else {
-        if (CPU == "HCPU32I") {
-          HCPUArchFeature = "+HCPU32I";
+        if (CPU == "hcpu32I") {
+          HCPUArchFeature = "+hcpu32I";
         }
       }
     }
@@ -119,7 +119,9 @@ static MCInstrAnalysis *createHCPUMCInstrAnalysis(const MCInstrInfo *Info) {
 extern "C" void LLVMInitializeHCPUTargetMC() {
 
   // Register the MC asm info.
-  RegisterMCAsmInfoFn X(getTheHCPUTarget(), createHCPUMCAsmInfo);
+  // RegisterMCAsmInfoFn X(getTheHCPUTarget(), createHCPUMCAsmInfo);
+
+  TargetRegistry::RegisterMCAsmInfo(getTheHCPUTarget(), createHCPUMCAsmInfo);
 
   // Register the MC instruction info.
   TargetRegistry::RegisterMCInstrInfo(getTheHCPUTarget(),

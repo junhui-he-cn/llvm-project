@@ -22,4 +22,14 @@ bool FixGlobalBaseReg;
 
 HCPUFunctionInfo::~HCPUFunctionInfo() {}
 
+void HCPUFunctionInfo::createEhDataRegsFI(MachineFunction &MF) { 
+  const TargetRegisterInfo &TRI = *MF.getSubtarget().getRegisterInfo();
+  for (int I = 0; I < 2; ++I) {
+    const TargetRegisterClass &RC = HCPU::CPURegsRegClass;
+
+    EhDataRegFI[I] = MF.getFrameInfo().CreateStackObject(
+        TRI.getSpillSize(RC), TRI.getSpillAlign(RC), false);
+  }
+}
+
 void HCPUFunctionInfo::anchor() {};

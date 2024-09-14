@@ -62,6 +62,11 @@ public:
   bool isLittleEndian() const { return isLittle; }
 
   const HCPUABIInfo &getABI() const { return ABI; }
+
+  MachineFunctionInfo *
+  createMachineFunctionInfo(BumpPtrAllocator &Allocator, const Function &F,
+                            const TargetSubtargetInfo *STI) const override;
+
 };
 
 /// HCPUelTargetMachine - HCPU32 little endian target machine.

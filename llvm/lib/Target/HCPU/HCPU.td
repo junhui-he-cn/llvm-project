@@ -34,14 +34,14 @@ def : ProcessorModel<"generic", NoSchedModel, []>;
 def FeatureCmp : SubtargetFeature<"cmp", "HasCmp", "true", "Enable cmp instructions">;
 def FeatureSlt : SubtargetFeature<"slt", "HasSlt", "true", "Enable slt instructions">;
 
-def FeatureHCPU32I : SubtargetFeature<"HCPU32I", "HCPUArchVersion", "HCPU32I",
+def FeatureHCPU32I : SubtargetFeature<"hcpu32I", "HCPUArchVersion", "HCPU32I",
   "HCPU32I ISA Support", [FeatureCmp]>;
 
-def FeatureHCPU32II : SubtargetFeature<"HCPU32II", "HCPUArchVersion", "HCPU32II",
+def FeatureHCPU32II : SubtargetFeature<"hcpu32II", "HCPUArchVersion", "HCPU32II",
   "HCPU32I ISA Support (slt)", [FeatureCmp, FeatureSlt]>;
 
 class Proc<string Name, list<SubtargetFeature> Features>
  :Processor<Name, HCPUGenericItineraries, Features>;
 
-def : Proc<"HCPU32I", [FeatureHCPU32I]>;
-def : Proc<"HCPU32II", [FeatureHCPU32II]>;
+def : Proc<"hcpu32I", [FeatureHCPU32I]>;
+def : Proc<"hcpu32II", [FeatureHCPU32II]>;

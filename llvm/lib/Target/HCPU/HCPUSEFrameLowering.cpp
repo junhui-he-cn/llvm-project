@@ -43,3 +43,26 @@ void HCPUSEFrameLowering::emitEpilogue(MachineFunction &MF, MachineBasicBlock &M
 const HCPUFrameLowering *llvm::createHCPUSEFrameLowering(const HCPUSubtarget &ST) {
   return new HCPUSEFrameLowering(ST);
 }
+
+/// Mark \p Reg and all registers aliasing it in the bitset.
+static void setAliasRegs(MachineFunction &MF, BitVector &SavedRegs, unsigned Reg) {
+  const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+  for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+    SavedRegs.set(*AI);
+}
+
+// This method is called immediately before PrologEpilogInserter scans the 
+//  physical registers used to determine what callee saved registers should be 
+//  spilled. This method is optional. 
+void HCPUSEFrameLowering::determineCalleeSaves(MachineFunction &MF,
+                                               BitVector &SavedRegs,
+                                               RegScavenger *RS) const {
+//@determineCalleeSaves-body
+  TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
+  HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
+
+  if (MF.getFrameInfo().hasCalls())
+    setAliasRegs(MF, SavedRegs, HCPU::LR);
+
+  return;
+}

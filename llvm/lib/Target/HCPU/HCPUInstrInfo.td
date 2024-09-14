@@ -20,7 +20,7 @@ def SDT_HCPURet : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 def HCPURet : SDNode<"HCPUISD::Ret", SDTNone, [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
 //===----------------------------------------------------------------------===//
-// Cpu0 Instruction Predicate Definitions.
+// HCPU Instruction Predicate Definitions.
 //===----------------------------------------------------------------------===//
 
 def EnableOverflow : Predicate<"Subtarget->enableOverflow()">;
@@ -36,8 +36,24 @@ def HasSlt : Predicate<"Subtarget->hasSlt()">;
 include "HCPUInstrFormats.td"
 
 //===----------------------------------------------------------------------===//
-// Cpu0 Operand, Complex Patterns and Transformations Definitions.
+// HCPU Operand, Complex Patterns and Transformations Definitions.
 //===----------------------------------------------------------------------===//
+
+def shamt       : Operand<i32>;
+
+// Unsigned Operand
+def uimm16      : Operand<i32> {
+  let PrintMethod = "printUnsignedImm";
+}
+// Transformation Function - get the lower 16 bits.
+def LO16 : SDNodeXForm<imm, [{
+  return getImm(N, N->getZExtValue() & 0xffff);
+}]>;
+
+// Transformation Function - get the higher 16 bits.
+def HI16 : SDNodeXForm<imm, [{
+  return getImm(N, (N->getZExtValue() >> 16) & 0xffff);
+}]>;
 
 def simm16 : Operand<i32> {
   let DecoderMethod = "DecodeSimm16";
@@ -50,6 +66,26 @@ def mem : Operand<iPTR> {
 }
 
 def immSExt16 : PatLeaf<(imm), [{ return isInt<16>(N->getSExtValue()); }]>;
+
+// Node immediate fits as 16-bit zero extended on target immediate.
+// The LO16 param means that only the lower 16 bits of the node
+// immediate are caught.
+// e.g. addiu, sltiu
+def immZExt16  : PatLeaf<(imm), [{
+  if (N->getValueType(0) == MVT::i32)
+    return (uint32_t)N->getZExtValue() == (unsigned short)N->getZExtValue();
+  else
+    return (uint64_t)N->getZExtValue() == (unsigned short)N->getZExtValue();
+}], LO16>;
+
+// Immediate can be loaded with LUi (32-bit int with lower 16-bit cleared).
+def immLow16Zero : PatLeaf<(imm), [{
+  int64_t Val = N->getSExtValue();
+  return isInt<32>(Val) && !(Val & 0xffff);
+}]>;
+
+// shamt field must fit in 5 bits.
+def immZExt5 : ImmLeaf<i32, [{return Imm == (Imm & 0x1f);}]>;
 
 def addr:
   ComplexPattern<iPTR, 2, "SelectAddr", [frameindex], [SDNPWantParent]>;
@@ -140,9 +176,76 @@ def RET : RetBase<GPROut>;
 let addr = 0 in
   def NOP : FJ<0, (outs), (ins), "nop", [], IIAlu>; 
 
-def : Pat<(i32 immSExt16: $in),
-          (ADDiu ZERO, imm:$in)>;
-
 let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1 in {
   def RetLR : HCPUPseudo<(outs), (ins), "", [(HCPURet)]>;
 }
+
+class HCPUInstAlias<string Asm, dag Result, bit Emit = 0b1> :
+  InstAlias<Asm, Result, Emit>;
+
+// Arithmetic and logical instructions with 3 register operands.
+class ArithLogicR<bits<8> op, string instr_asm, SDNode OpNode,
+                  InstrItinClass itin, RegisterClass RC, bit isComm = 0>:
+  FA<op, (outs GPROut:$ra), (ins RC:$rb, RC:$rc),
+     !strconcat(instr_asm, "\t$ra, $rb, $rc"),
+     [(set GPROut:$ra, (OpNode RC:$rb, RC:$rc))], itin> {
+  let shamt = 0;
+  let isCommutable = isComm;	// e.g. add rb rc =  add rc rb
+  let isReMaterializable = 1;
+}
+
+
+// Shifts
+class shift_rotate_imm<bits<8> op, bits<4> isRotate, string instr_asm,
+                       SDNode OpNode, PatFrag PF, Operand ImmOpnd,
+                       RegisterClass RC>:
+  FA<op, (outs GPROut:$ra), (ins RC:$rb, ImmOpnd:$shamt),
+     !strconcat(instr_asm, "\t$ra, $rb, $shamt"),
+     [(set GPROut:$ra, (OpNode RC:$rb, PF:$shamt))], IIAlu> {
+  let rc = 0;
+}
+
+// 32-bit shift instructions.
+class shift_rotate_imm32<bits<8> op, bits<4> isRotate, string instr_asm,
+                         SDNode OpNode>:
+  shift_rotate_imm<op, isRotate, instr_asm, OpNode, immZExt5, shamt, CPURegs>;
+
+
+// Load Upper Imediate
+class LoadUpper<bits<8> op, string instr_asm, RegisterClass RC, Operand Imm>:
+  FL<op, (outs RC:$ra), (ins Imm:$imm16),
+     !strconcat(instr_asm, "\t$ra, $imm16"), [], IIAlu> {
+  let rb = 0;
+  let isReMaterializable = 1;
+}
+
+
+def ORi     : ArithLogicI<0x0d, "ori", or, uimm16, immZExt16, CPURegs>;
+
+
+def LUi     : LoadUpper<0x0F, "lui", GPROut, uimm16>;
+
+
+let Predicates = [DisableOverflow] in {
+def ADDu    : ArithLogicR<0x11, "addu", add, IIAlu, CPURegs, 1>;
+}
+
+
+def SHL     : shift_rotate_imm32<0x1e, 0x00, "shl", shl>;
+
+
+//===----------------------------------------------------------------------===//
+// Instruction aliases
+//===----------------------------------------------------------------------===//
+def : HCPUInstAlias<"move $dst, $src",
+                    (ADDu GPROut:$dst, GPROut:$src,ZERO), 1>;
+
+
+def : Pat<(i32 immZExt16:$in),
+          (ORi ZERO, imm:$in)>;
+def : Pat<(i32 immLow16Zero:$in),
+          (LUi (HI16 imm:$in))>;
+
+// Arbitrary immediates
+def : Pat<(i32 imm:$imm),
+          (ORi (LUi (HI16 imm:$imm)), (LO16 imm:$imm))>;

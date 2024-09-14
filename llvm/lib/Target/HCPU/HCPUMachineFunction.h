@@ -18,14 +18,15 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include <map>
 
 namespace llvm {
 class HCPUFunctionInfo : public MachineFunctionInfo {
 public:
-  HCPUFunctionInfo(MachineFunction &MF)
-      : MF(MF), VarArgsFrameIndex(0), MaxCallFrameSize(0), EmitNOAT(false),
+  HCPUFunctionInfo(const Function &F, const TargetSubtargetInfo *STI)
+      : VarArgsFrameIndex(0), MaxCallFrameSize(0), EmitNOAT(false),
         SRetReturnReg(0), CallsEhReturn(false), CallsEhDwarf(false) {}
 
   ~HCPUFunctionInfo();
@@ -45,10 +46,24 @@ public:
     HasByvalArg = HasByval;
   }
 
+  unsigned getIncomingArgSize() const { return IncomingArgSize; }
+
+  bool callsEhReturn() const { return CallsEhReturn; }
+  void setCallsEhReturn() { CallsEhReturn = true; }
+
+  bool callsEhDwarf() const { return CallsEhDwarf; }
+  void setCallsEhDwarf() { CallsEhDwarf = true; }
+
+  void createEhDataRegsFI(MachineFunction &MF);
+  int getEhDataRegFI(unsigned Reg) const { return EhDataRegFI[Reg]; }
+
+  unsigned getMaxCallFrameSize() const { return MaxCallFrameSize; }
+  void setMaxCallFrameSize(unsigned S) { MaxCallFrameSize = S; }
+
 private:
   virtual void anchor();
 
-  MachineFunction &MF;
+  // MachineFunction &MF;
 
   /// VarArgsFrameIndex - FrameIndex for start of varargs area.
   int VarArgsFrameIndex;

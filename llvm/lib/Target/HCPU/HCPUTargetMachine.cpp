@@ -15,6 +15,7 @@
 #include "HCPU.h"
 
 #include "HCPUInstrInfo.h"
+#include "HCPUMachineFunction.h"
 #include "HCPUSubtarget.h"
 #include "HCPUTargetObjectFile.h"
 #include "MCTargetDesc/HCPUABIInfo.h"
@@ -145,4 +146,10 @@ TargetPassConfig *HCPUTargetMachine::createPassConfig(PassManagerBase &PM) {
 bool HCPUPassConfig::addInstSelector() {
   addPass(createHCPUSEISelDag(getHCPUTargetMachine(), getOptLevel()));
   return false;
+}
+
+MachineFunctionInfo *HCPUTargetMachine::createMachineFunctionInfo(
+    BumpPtrAllocator &Allocator, const Function &F,
+    const TargetSubtargetInfo *STI) const {
+  return HCPUFunctionInfo::create<HCPUFunctionInfo>(Allocator, F, STI);
 }

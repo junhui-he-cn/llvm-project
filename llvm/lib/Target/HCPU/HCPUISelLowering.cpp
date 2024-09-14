@@ -76,6 +76,10 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
   //- Set .align 2
   // It will emit .align 2 later
   setMinFunctionAlignment(Align(2));
+
+  // // must, computeRegisterProperties - Once all of the register classes are
+  // //  added, this allows us to compute derived properties we expose.
+  // computeRegisterProperties(Subtarget.getRegisterInfo());
 }
 
 const HCPUTargetLowering *
@@ -175,18 +179,17 @@ HCPUTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 }
 
 HCPUTargetLowering::HCPUCC::HCPUCC(
-  CallingConv::ID CC, bool IsO32_, CCState &Info,
-  HCPUCC::SpecialCallingConvType SpecialCallingConv_)
-  : CCInfo(Info), CallConv(CC), IsO32(IsO32_) {
+    CallingConv::ID CC, bool IsO32_, CCState &Info,
+    HCPUCC::SpecialCallingConvType SpecialCallingConv_)
+    : CCInfo(Info), CallConv(CC), IsO32(IsO32_) {
   // Pre-allocate reserved argument area.
   CCInfo.AllocateStack(reservedArgArea(), Align(1));
 }
 
-
-template<typename Ty>
-void HCPUTargetLowering::HCPUCC::
-analyzeReturn(const SmallVectorImpl<Ty> &RetVals, bool IsSoftFloat,
-              const SDNode *CallNode, const Type *RetTy) const {
+template <typename Ty>
+void HCPUTargetLowering::HCPUCC::analyzeReturn(
+    const SmallVectorImpl<Ty> &RetVals, bool IsSoftFloat,
+    const SDNode *CallNode, const Type *RetTy) const {
   CCAssignFn *Fn;
 
   Fn = RetCC_HCPU;
@@ -206,22 +209,21 @@ analyzeReturn(const SmallVectorImpl<Ty> &RetVals, bool IsSoftFloat,
   }
 }
 
-void HCPUTargetLowering::HCPUCC::
-analyzeCallResult(const SmallVectorImpl<ISD::InputArg> &Ins, bool IsSoftFloat,
-                  const SDNode *CallNode, const Type *RetTy) const {
+void HCPUTargetLowering::HCPUCC::analyzeCallResult(
+    const SmallVectorImpl<ISD::InputArg> &Ins, bool IsSoftFloat,
+    const SDNode *CallNode, const Type *RetTy) const {
   analyzeReturn(Ins, IsSoftFloat, CallNode, RetTy);
 }
 
-void HCPUTargetLowering::HCPUCC::
-analyzeReturn(const SmallVectorImpl<ISD::OutputArg> &Outs, bool IsSoftFloat,
-              const Type *RetTy) const {
+void HCPUTargetLowering::HCPUCC::analyzeReturn(
+    const SmallVectorImpl<ISD::OutputArg> &Outs, bool IsSoftFloat,
+    const Type *RetTy) const {
   analyzeReturn(Outs, IsSoftFloat, nullptr, RetTy);
 }
 unsigned HCPUTargetLowering::HCPUCC::reservedArgArea() const {
   return (IsO32 && (CallConv != CallingConv::Fast)) ? 8 : 0;
 }
-MVT HCPUTargetLowering::HCPUCC::getRegVT(MVT VT,
-                                         bool IsSoftFloat) const {
+MVT HCPUTargetLowering::HCPUCC::getRegVT(MVT VT, bool IsSoftFloat) const {
   if (IsSoftFloat || IsO32)
     return VT;
 

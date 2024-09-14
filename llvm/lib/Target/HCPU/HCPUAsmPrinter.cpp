@@ -263,5 +263,4 @@ void HCPUAsmPrinter::PrintDebugValueComment(const MachineInstr *MI,
 // Force static initialization.
 extern "C" void LLVMInitializeHCPUAsmPrinter() {
   RegisterAsmPrinter<HCPUAsmPrinter> X(getTheHCPUTarget());
-  RegisterAsmPrinter<HCPUAsmPrinter> Y(getTheHCPUTarget());
 }

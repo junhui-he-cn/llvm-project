@@ -36,6 +36,7 @@ add_llvm_target(HCPUCodeGen
   HCPUTargetMachine.cpp
   HCPUAsmPrinter.cpp
   HCPUMCInstLower.cpp
+  HCPUAnalyzeImmediate.cpp
 
   LINK_COMPONENTS
   HCPUDesc
