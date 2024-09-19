@@ -31,11 +31,11 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Pass.h"
 #include <cstddef>
 using namespace llvm;
 
@@ -68,15 +68,15 @@ bool HCPUDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
 //@SelectAddr {
 /// ComplexPattern used on HCPUInstrInfo
 /// Used on HCPU Load/Store instructions
-bool HCPUDAGToDAGISel::
-SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
-//@SelectAddr }
+bool HCPUDAGToDAGISel::SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base,
+                                  SDValue &Offset) {
+  //@SelectAddr }
   EVT ValTy = Addr.getValueType();
   SDLoc DL(Addr);
 
   // If Parent is an unaligned f32 load or store, select a (base + index)
   // floating point load/store instruction (luxc1 or suxc1).
-  const LSBaseSDNode* LS = 0;
+  const LSBaseSDNode *LS = 0;
 
   if (Parent && (LS = dyn_cast<LSBaseSDNode>(Parent))) {
     EVT VT = LS->getMemoryVT();
@@ -90,12 +90,12 @@ SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
 
   // if Address is FI, get the TargetFrameIndex.
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
-    Base   = CurDAG->getTargetFrameIndex(FIN->getIndex(), ValTy);
+    Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), ValTy);
     Offset = CurDAG->getTargetConstant(0, DL, ValTy);
     return true;
   }
 
-  Base   = Addr;
+  Base = Addr;
   Offset = CurDAG->getTargetConstant(0, DL, ValTy);
   return true;
 }
@@ -104,7 +104,7 @@ SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
 /// Select instructions not customized! Used for
 /// expanded, promoted and normal instructions
 void HCPUDAGToDAGISel::Select(SDNode *Node) {
-//@Select }
+  //@Select }
   unsigned Opcode = Node->getOpcode();
 
   // If we have a custom node, we already have selected!
@@ -118,9 +118,9 @@ void HCPUDAGToDAGISel::Select(SDNode *Node) {
   if (trySelect(Node))
     return;
 
-  switch(Opcode) {
-  default: break;
-
+  switch (Opcode) {
+  default:
+    break;
   }
 
   // Select the default instruction

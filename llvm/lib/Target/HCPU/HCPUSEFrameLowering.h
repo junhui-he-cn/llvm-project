@@ -27,6 +27,8 @@ public:
   void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                             RegScavenger *RS) const override;
+  
+  bool hasReservedCallFrame(const MachineFunction &MF) const;
 };
 } // namespace llvm
 
