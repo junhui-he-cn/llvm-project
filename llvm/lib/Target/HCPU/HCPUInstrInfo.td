@@ -362,12 +362,177 @@ def MTC0    : MoveToC0<0x51, "mtc0", CPURegs>;
 
 def C0MOVE  : C0Move<0x52, "c0mov">;
 
+class CmpInstr<bits<8> op, string instr_asm, 
+               InstrItinClass itin, RegisterClass RC, RegisterClass RD, 
+               bit isComm = 0>:
+  FA<op, (outs RD:$ra), (ins RC:$rb, RC:$rc),
+     !strconcat(instr_asm, "\t$ra, $rb, $rc"), [], itin> {
+  let shamt = 0;
+  let isCommutable = isComm;
+  let Predicates = [HasCmp];
+}
+
+//  Logical
+class LogicNOR<bits<8> op, string instr_asm, RegisterClass RC>:
+  FA<op, (outs RC:$ra), (ins RC:$rb, RC:$rc),
+     !strconcat(instr_asm, "\t$ra, $rb, $rc"),
+     [(set RC:$ra, (not (or RC:$rb, RC:$rc)))], IIAlu> {
+  let shamt = 0;
+  let isCommutable = 1;
+}
+
+class SetCC_R<bits<8> op, string instr_asm, PatFrag cond_op,
+              RegisterClass RC>:
+  FA<op, (outs GPROut:$ra), (ins RC:$rb, RC:$rc),
+     !strconcat(instr_asm, "\t$ra, $rb, $rc"),
+     [(set GPROut:$ra, (cond_op RC:$rb, RC:$rc))],
+     IIAlu>, Requires<[HasSlt]> {
+  let shamt = 0;
+}
+
+class SetCC_I<bits<8> op, string instr_asm, PatFrag cond_op, Operand Od,
+              PatLeaf imm_type, RegisterClass RC>:
+  FL<op, (outs GPROut:$ra), (ins RC:$rb, Od:$imm16),
+     !strconcat(instr_asm, "\t$ra, $rb, $imm16"),
+     [(set GPROut:$ra, (cond_op RC:$rb, imm_type:$imm16))],
+     IIAlu>, Requires<[HasSlt]> {
+}
+
+def ANDi    : ArithLogicI<0x0c, "andi", and, uimm16, immZExt16, CPURegs>;
+def XORi    : ArithLogicI<0x0e, "xori", xor, uimm16, immZExt16, CPURegs>;
+let Predicates = [HasCmp] in {
+def CMP     : CmpInstr<0x2A, "cmp", IIAlu, CPURegs, SR, 0>;
+def CMPu    : CmpInstr<0x2B, "cmpu", IIAlu, CPURegs, SR, 0>;
+}
+def AND     : ArithLogicR<0x18, "and", and, IIAlu, CPURegs, 1>;
+def OR      : ArithLogicR<0x19, "or", or, IIAlu, CPURegs, 1>;
+def XOR     : ArithLogicR<0x1a, "xor", xor, IIAlu, CPURegs, 1>;
+def NOR     : LogicNOR<0x1b, "nor", CPURegs>;
+let Predicates = [HasSlt] in {
+def SLTi    : SetCC_I<0x26, "slti", setlt, simm16, immSExt16, CPURegs>;
+def SLTiu   : SetCC_I<0x27, "sltiu", setult, simm16, immSExt16, CPURegs>;
+def SLT     : SetCC_R<0x28, "slt", setlt, CPURegs>;
+def SLTu    : SetCC_R<0x29, "sltu", setult, CPURegs>;
+}
+def : Pat<(not CPURegs:$in),
+// 1's complement of in, ex. not(0xf000000f) == 0x0ffffff0
+          (NOR CPURegs:$in, ZERO)>;
+
+// setcc for cmp instruction
+multiclass SeteqPatsCmp<RegisterClass RC> {
+// a == b
+  def : Pat<(seteq RC:$lhs, RC:$rhs),
+            (SHR (ANDi (CMP RC:$lhs, RC:$rhs), 2), 1)>;
+// a != b
+  def : Pat<(setne RC:$lhs, RC:$rhs),
+            (XORi (SHR (ANDi (CMP RC:$lhs, RC:$rhs), 2), 1), 1)>;
+}
+
+// a < b
+multiclass SetltPatsCmp<RegisterClass RC> {
+  def : Pat<(setlt RC:$lhs, RC:$rhs),
+            (ANDi (CMP RC:$lhs, RC:$rhs), 1)>;
+// if cpu0  `define N    `SW[31]  instead of `SW[0] // Negative flag, then need
+// 2 more instructions as follows,
+//          (XORi (ANDi (SHR (CMP RC:$lhs, RC:$rhs), (LUi 0x8000), 31), 1), 1)>;
+  def : Pat<(setult RC:$lhs, RC:$rhs),
+            (ANDi (CMPu RC:$lhs, RC:$rhs), 1)>;
+}
+
+// a <= b
+multiclass SetlePatsCmp<RegisterClass RC> {
+  def : Pat<(setle RC:$lhs, RC:$rhs),
+// a <= b is equal to (XORi (b < a), 1)
+            (XORi (ANDi (CMP RC:$rhs, RC:$lhs), 1), 1)>;
+  def : Pat<(setule RC:$lhs, RC:$rhs),
+            (XORi (ANDi (CMP RC:$rhs, RC:$lhs), 1), 1)>;
+}
+
+// a > b
+multiclass SetgtPatsCmp<RegisterClass RC> {
+  def : Pat<(setgt RC:$lhs, RC:$rhs),
+// a > b is equal to b < a is equal to setlt(b, a)
+            (ANDi (CMP RC:$rhs, RC:$lhs), 1)>;
+  def : Pat<(setugt RC:$lhs, RC:$rhs),
+            (ANDi (CMPu RC:$rhs, RC:$lhs), 1)>;
+}
+
+// a >= b
+multiclass SetgePatsCmp<RegisterClass RC> {
+  def : Pat<(setge RC:$lhs, RC:$rhs),
+// a >= b is equal to b <= a
+            (XORi (ANDi (CMP RC:$lhs, RC:$rhs), 1), 1)>;
+  def : Pat<(setuge RC:$lhs, RC:$rhs),
+            (XORi (ANDi (CMPu RC:$lhs, RC:$rhs), 1), 1)>;
+}
+
+// setcc for slt instruction
+multiclass SeteqPatsSlt<RegisterClass RC, Instruction SLTiuOp, Instruction XOROp,
+                     Instruction SLTuOp, Register ZEROReg> {
+// a == b
+  def : Pat<(seteq RC:$lhs, RC:$rhs),
+                (SLTiuOp (XOROp RC:$lhs, RC:$rhs), 1)>;
+// a != b
+  def : Pat<(setne RC:$lhs, RC:$rhs),
+                (SLTuOp ZEROReg, (XOROp RC:$lhs, RC:$rhs))>;
+}
+
+// a <= b
+multiclass SetlePatsSlt<RegisterClass RC, Instruction SLTOp, Instruction SLTuOp> {
+  def : Pat<(setle RC:$lhs, RC:$rhs),
+// a <= b is equal to (XORi (b < a), 1)
+                (XORi (SLTOp RC:$rhs, RC:$lhs), 1)>;
+  def : Pat<(setule RC:$lhs, RC:$rhs),
+                (XORi (SLTuOp RC:$rhs, RC:$lhs), 1)>;
+}
+
+// a > b
+multiclass SetgtPatsSlt<RegisterClass RC, Instruction SLTOp, Instruction SLTuOp> {
+  def : Pat<(setgt RC:$lhs, RC:$rhs),
+// a > b is equal to b < a is equal to setlt(b, a)
+                (SLTOp RC:$rhs, RC:$lhs)>;
+  def : Pat<(setugt RC:$lhs, RC:$rhs),
+                (SLTuOp RC:$rhs, RC:$lhs)>;
+}
+
+// a >= b
+multiclass SetgePatsSlt<RegisterClass RC, Instruction SLTOp, Instruction SLTuOp> {
+  def : Pat<(setge RC:$lhs, RC:$rhs),
+// a >= b is equal to b <= a
+                (XORi (SLTOp RC:$lhs, RC:$rhs), 1)>;
+  def : Pat<(setuge RC:$lhs, RC:$rhs),
+                (XORi (SLTuOp RC:$lhs, RC:$rhs), 1)>;
+}
+
+multiclass SetgeImmPatsSlt<RegisterClass RC, Instruction SLTiOp,
+                        Instruction SLTiuOp> {
+  def : Pat<(setge RC:$lhs, immSExt16:$rhs),
+                (XORi (SLTiOp RC:$lhs, immSExt16:$rhs), 1)>;
+  def : Pat<(setuge RC:$lhs, immSExt16:$rhs),
+                (XORi (SLTiuOp RC:$lhs, immSExt16:$rhs), 1)>;
+}
+
+let Predicates = [HasSlt] in {
+defm : SeteqPatsSlt<CPURegs, SLTiu, XOR, SLTu, ZERO>;
+defm : SetlePatsSlt<CPURegs, SLT, SLTu>;
+defm : SetgtPatsSlt<CPURegs, SLT, SLTu>;
+defm : SetgePatsSlt<CPURegs, SLT, SLTu>;
+defm : SetgeImmPatsSlt<CPURegs, SLTi, SLTiu>;
+}
+let Predicates = [HasCmp] in {
+defm : SeteqPatsCmp<CPURegs>;
+defm : SetltPatsCmp<CPURegs>;
+defm : SetlePatsCmp<CPURegs>;
+defm : SetgtPatsCmp<CPURegs>;
+defm : SetgePatsCmp<CPURegs>;
+}
+
+
 //===----------------------------------------------------------------------===//
 // Instruction aliases
 //===----------------------------------------------------------------------===//
 def : HCPUInstAlias<"move $dst, $src",
                     (ADDu GPROut:$dst, GPROut:$src,ZERO), 1>;
-
 
 def : Pat<(i32 immZExt16:$in),
           (ORi ZERO, imm:$in)>;
