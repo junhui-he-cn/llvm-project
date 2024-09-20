@@ -29,6 +29,11 @@
 
 using namespace llvm;
 
+static cl::opt<bool> EnableOverflowOpt
+                ("cpu0-enable-overflow", cl::Hidden, cl::init(false),
+                 cl::desc("Use trigger overflow instructions add and sub \
+                 instead of non-overflow instructions addu and subu"));
+
 #define DEBUG_TYPE "hcpu-subtarget"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
@@ -46,7 +51,9 @@ HCPUSubtarget::HCPUSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
       InstrInfo(
           HCPUInstrInfo::create(initializeSubtargetDependencies(CPU, FS, TM))),
       FrameLowering(HCPUFrameLowering::create(*this)),
-      TLInfo(HCPUSETargetLowering::create(TM, *this)) {}
+      TLInfo(HCPUSETargetLowering::create(TM, *this)) {
+    EnableOverflow = EnableOverflowOpt;
+}
 
 bool HCPUSubtarget::isPositionIndependent() const {
   return TM.isPositionIndependent();

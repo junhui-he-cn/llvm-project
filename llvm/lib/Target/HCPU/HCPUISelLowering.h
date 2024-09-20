@@ -139,6 +139,8 @@ private:
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
                       const SmallVectorImpl<SDValue> &OutVals, const SDLoc &dl,
                       SelectionDAG &DAG) const override;
+
+  SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 };
 const HCPUTargetLowering *
 createHCPUSETargetLowering(const HCPUTargetMachine &TM,

@@ -77,9 +77,13 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
   // It will emit .align 2 later
   setMinFunctionAlignment(Align(2));
 
-  // // must, computeRegisterProperties - Once all of the register classes are
-  // //  added, this allows us to compute derived properties we expose.
-  // computeRegisterProperties(Subtarget.getRegisterInfo());
+  setOperationAction(ISD::SDIV, MVT::i32, Expand);
+  setOperationAction(ISD::SREM, MVT::i32, Expand);
+  setOperationAction(ISD::UDIV, MVT::i32, Expand);
+  setOperationAction(ISD::UREM, MVT::i32, Expand);
+
+  setTargetDAGCombine(ISD::SDIVREM);
+  setTargetDAGCombine(ISD::UDIVREM);
 }
 
 const HCPUTargetLowering *
@@ -228,4 +232,56 @@ MVT HCPUTargetLowering::HCPUCC::getRegVT(MVT VT, bool IsSoftFloat) const {
     return VT;
 
   return VT;
+}
+
+static SDValue performDivRemCombine(SDNode *N, SelectionDAG& DAG,
+                                    TargetLowering::DAGCombinerInfo &DCI,
+                                    const HCPUSubtarget &Subtarget) {
+  if (DCI.isBeforeLegalizeOps())
+    return SDValue();
+
+  EVT Ty = N->getValueType(0);
+  unsigned LO = HCPU::LO;
+  unsigned HI = HCPU::HI;
+  unsigned Opc = N->getOpcode() == ISD::SDIVREM ? HCPUISD::DivRem :
+                                                  HCPUISD::DivRemU;
+  SDLoc DL(N);
+
+  SDValue DivRem = DAG.getNode(Opc, DL, MVT::Glue,
+                               N->getOperand(0), N->getOperand(1));
+  SDValue InChain = DAG.getEntryNode();
+  SDValue InGlue = DivRem;
+
+  // insert MFLO
+  if (N->hasAnyUseOfValue(0)) {
+    SDValue CopyFromLo = DAG.getCopyFromReg(InChain, DL, LO, Ty,
+                                            InGlue);
+    DAG.ReplaceAllUsesOfValueWith(SDValue(N, 0), CopyFromLo);
+    InChain = CopyFromLo.getValue(1);
+    InGlue = CopyFromLo.getValue(2);
+  }
+
+  // insert MFHI
+  if (N->hasAnyUseOfValue(1)) {
+    SDValue CopyFromHi = DAG.getCopyFromReg(InChain, DL,
+                                            HI, Ty, InGlue);
+    DAG.ReplaceAllUsesOfValueWith(SDValue(N, 1), CopyFromHi);
+  }
+
+  return SDValue();
+}
+
+SDValue HCPUTargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
+  const {
+  SelectionDAG &DAG = DCI.DAG;
+  unsigned Opc = N->getOpcode();
+
+  switch (Opc) {
+  default: break;
+  case ISD::SDIVREM:
+  case ISD::UDIVREM:
+    return performDivRemCombine(N, DAG, DCI, Subtarget);
+  }
+
+  return SDValue();
 }

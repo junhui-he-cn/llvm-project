@@ -16,9 +16,16 @@
 //===----------------------------------------------------------------------===//
 
 def SDT_HCPURet : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
+def SDT_HCPUDivRem : SDTypeProfile<0, 2, [SDTCisInt<0>,
+                                         SDTCisSameAs<0, 1>]>;
+
 
 def HCPURet : SDNode<"HCPUISD::Ret", SDTNone, [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
-
+// DivRem(u) nodes
+def HCPUDivRem    : SDNode<"HCPUISD::DivRem", SDT_HCPUDivRem,
+                           [SDNPOutGlue]>;
+def HCPUDivRemU   : SDNode<"HCPUISD::DivRemU", SDT_HCPUDivRem,
+                           [SDNPOutGlue]>;
 //===----------------------------------------------------------------------===//
 // HCPU Instruction Predicate Definitions.
 //===----------------------------------------------------------------------===//
@@ -233,6 +240,127 @@ def ADDu    : ArithLogicR<0x11, "addu", add, IIAlu, CPURegs, 1>;
 
 def SHL     : shift_rotate_imm32<0x1e, 0x00, "shl", shl>;
 
+class shift_rotate_reg<bits<8> op, bits<4> isRotate, string instr_asm,
+                       SDNode OpNode, RegisterClass RC>:
+  FA<op, (outs GPROut:$ra), (ins RC:$rb, RC:$rc),
+     !strconcat(instr_asm, "\t$ra, $rb, $rc"),
+     [(set GPROut:$ra, (OpNode RC:$rb, RC:$rc))], IIAlu> {
+  let shamt = 0;
+}
+
+// Mul, Div
+class Mult<bits<8> op, string instr_asm, InstrItinClass itin,
+           RegisterClass RC, list<Register> DefRegs>:
+  FA<op, (outs), (ins RC:$ra, RC:$rb),
+     !strconcat(instr_asm, "\t$ra, $rb"), [], itin> {
+  let rc = 0;
+  let shamt = 0;
+  let isCommutable = 1;
+  let Defs = DefRegs;
+  let hasSideEffects = 0;
+}
+
+class Mult32<bits<8> op, string instr_asm, InstrItinClass itin>:
+  Mult<op, instr_asm, itin, CPURegs, [HI, LO]>;
+
+class Div<SDNode opNode, bits<8> op, string instr_asm, InstrItinClass itin,
+          RegisterClass RC, list<Register> DefRegs>:
+  FA<op, (outs), (ins RC:$ra, RC:$rb),
+     !strconcat(instr_asm, "\t$ra, $rb"),
+     [(opNode RC:$ra, RC:$rb)], itin> {
+  let rc = 0;
+  let shamt = 0;
+  let Defs = DefRegs;
+}
+
+class Div32<SDNode opNode, bits<8> op, string instr_asm, InstrItinClass itin>:
+  Div<opNode, op, instr_asm, itin, CPURegs, [HI, LO]>;
+
+// Move from Lo/Hi
+class MoveFromLOHI<bits<8> op, string instr_asm, RegisterClass RC,
+                   list<Register> UseRegs>:
+  FA<op, (outs RC:$ra), (ins),
+     !strconcat(instr_asm, "\t$ra"), [], IIHiLo> {
+  let rb = 0;
+  let rc = 0;
+  let shamt = 0;
+  let Uses = UseRegs;
+  let hasSideEffects = 0;
+}
+
+// Move to Lo/Hi
+class MoveToLOHI<bits<8> op, string instr_asm, RegisterClass RC,
+                 list<Register> DefRegs>:
+  FA<op, (outs), (ins RC:$ra),
+     !strconcat(instr_asm, "\t$ra"), [], IIHiLo> {
+  let rb = 0;
+  let rc = 0;
+  let shamt = 0;
+  let Defs = DefRegs;
+  let hasSideEffects = 0;
+}
+
+// Move from C0 (co-processor 0) Register
+class MoveFromC0<bits<8> op, string instr_asm, RegisterClass RC>:
+  FA<op, (outs), (ins RC:$ra, C0Regs:$rb),
+     !strconcat(instr_asm, "\t$ra, $rb"), [], IIAlu> {
+  let rc = 0;
+  let shamt = 0;
+  let hasSideEffects = 0;
+}
+
+// Move to C0 Register
+class MoveToC0<bits<8> op, string instr_asm, RegisterClass RC>:
+  FA<op, (outs C0Regs:$ra), (ins RC:$rb),
+     !strconcat(instr_asm, "\t$ra, $rb"), [], IIAlu> {
+  let rc = 0;
+  let shamt = 0;
+  let hasSideEffects = 0;
+}
+
+// Move from C0 register to C0 register
+class C0Move<bits<8> op, string instr_asm>:
+  FA<op, (outs C0Regs:$ra), (ins C0Regs:$rb),
+     !strconcat(instr_asm, "\t$ra, $rb"), [], IIAlu> {
+  let rc = 0;
+  let shamt = 0;
+  let hasSideEffects = 0;
+}
+
+let Predicates = [DisableOverflow] in {
+def SUBu    : ArithLogicR<0x12, "subu", sub, IIAlu, CPURegs>;
+}
+let Predicates = [EnableOverflow] in {
+def ADD     : ArithLogicR<0x13, "add", add, IIAlu, CPURegs, 1>;
+def SUB     : ArithLogicR<0x14, "sub", sub, IIAlu, CPURegs>;
+}
+def MUL     : ArithLogicR<0x17, "mul", mul, IIImul, CPURegs, 1>;
+// sra is IR node for ashr llvm IR instruction of .bc
+def ROL     : shift_rotate_imm32<0x1c, 0x01, "rol", rotl>;
+def ROR     : shift_rotate_imm32<0x1d, 0x01, "ror", rotr>;
+// srl is IR node for lshr llvm IR instruction of .bc
+def SHR     : shift_rotate_imm32<0x1f, 0x00, "shr", srl>;
+def SRA     : shift_rotate_imm32<0x20, 0x00, "sra", sra>;
+def SRAV    : shift_rotate_reg<0x21, 0x00, "srav", sra, CPURegs>;
+def SHLV    : shift_rotate_reg<0x22, 0x00, "shlv", shl, CPURegs>;
+def SHRV    : shift_rotate_reg<0x23, 0x00, "shrv", srl, CPURegs>;
+def ROLV    : shift_rotate_reg<0x24, 0x01, "rolv", rotl, CPURegs>;
+def RORV    : shift_rotate_reg<0x25, 0x01, "rorv", rotr, CPURegs>;
+/// Multiply and Divide Instructions.
+def MULT    : Mult32<0x41, "mult", IIImul>;
+def MULTu   : Mult32<0x42, "multu", IIImul>;
+def SDIV    : Div32<HCPUDivRem, 0x43, "div", IIIdiv>;
+def UDIV    : Div32<HCPUDivRemU, 0x44, "divu", IIIdiv>;
+
+def MFHI    : MoveFromLOHI<0x46, "mfhi", CPURegs, [HI]>;
+def MFLO    : MoveFromLOHI<0x47, "mflo", CPURegs, [LO]>;
+def MTHI    : MoveToLOHI<0x48, "mthi", CPURegs, [HI]>;
+def MTLO    : MoveToLOHI<0x49, "mtlo", CPURegs, [LO]>;
+
+def MFC0    : MoveFromC0<0x50, "mfc0", CPURegs>;
+def MTC0    : MoveToC0<0x51, "mtc0", CPURegs>;
+
+def C0MOVE  : C0Move<0x52, "c0mov">;
 
 //===----------------------------------------------------------------------===//
 // Instruction aliases

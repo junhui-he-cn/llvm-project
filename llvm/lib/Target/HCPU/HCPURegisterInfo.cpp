@@ -28,7 +28,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 
-#define DEBUG_TYPE "HCPU-reg-info"
+#define DEBUG_TYPE "hcpu-reg-info"
 
 #define GET_REGINFO_TARGET_DESC
 #include "HCPUGenRegisterInfo.inc"

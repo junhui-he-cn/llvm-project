@@ -26,7 +26,6 @@ public:
       : HCPUDAGToDAGISel(TM, OL) {}
 
 private:
-
   bool runOnMachineFunction(MachineFunction &MF) override;
 
   bool trySelect(SDNode *Node) override;
@@ -35,8 +34,11 @@ private:
 
   // Insert instructions to initialize the global base register in the
   // first MBB of the function.
-//  void initGlobalBaseReg(MachineFunction &MF);
+  //  void initGlobalBaseReg(MachineFunction &MF);
 
+  std::pair<SDNode *, SDNode *> selectMULT(SDNode *N, unsigned Opc,
+                                           const SDLoc &DL, EVT Ty, bool HasLo,
+                                           bool HasHi);
 };
 
 class HCPUSEDAGToDAGISelLegacy : public HCPUDAGToDAGISelLegacy {
@@ -48,6 +50,6 @@ public:
 FunctionPass *createHCPUSEISelDag(HCPUTargetMachine &TM,
                                   CodeGenOptLevel OptLevel);
 
-}
+} // namespace llvm
 
 #endif

@@ -38,7 +38,7 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "mips-isel"
-#define PASS_NAME "MIPS DAG->DAG Pattern Instruction Selection"
+#define PASS_NAME "MIPS DAG->DAG Pattern Instruction Selection1"
 
 //===----------------------------------------------------------------------===//
 // Instruction Selector Implementation

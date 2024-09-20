@@ -39,7 +39,7 @@
 #include <cstddef>
 using namespace llvm;
 
-#define DEBUG_TYPE "HCPU-isel"
+#define DEBUG_TYPE "hcpu-isel"
 
 #define PASS_NAME "HCPU DAG->DAG Pattern Instruction Selection"
 

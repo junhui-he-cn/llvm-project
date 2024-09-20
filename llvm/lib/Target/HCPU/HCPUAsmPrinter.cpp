@@ -41,7 +41,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "HCPU-asm-printer"
+#define DEBUG_TYPE "hcpu-asm-printer"
 
 bool HCPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   HCPUFI = MF.getInfo<HCPUFunctionInfo>();

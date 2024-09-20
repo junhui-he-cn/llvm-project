@@ -33,10 +33,13 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "HCPU"
+#define DEBUG_TYPE "hcpu"
 
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeHCPUTarget() {
   RegisterTargetMachine<HCPUelTargetMachine> X(getTheHCPUTarget());
+
+  PassRegistry *PR = PassRegistry::getPassRegistry();
+  initializeHCPUDAGToDAGISelLegacyPass(*PR);
 }
 
 static std::string computeDataLayout(const Triple &TT, StringRef CPU,

@@ -27,7 +27,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "HCPU-isel"
+#define DEBUG_TYPE "hcpu-isel"
 
 static cl::opt<bool> EnableHCPUTailCalls("enable-hcpu-tail-calls", cl::Hidden,
                                          cl::desc("HCPU: Enable tail calls."),

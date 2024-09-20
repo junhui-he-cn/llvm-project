@@ -54,6 +54,10 @@ public:
                         const TargetRegisterInfo *TRI,
                         int64_t Offset) const override;
 
+  void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
+                   bool KillSrc) const override;  
+
 private:
   void expandRetLR(MachineBasicBlock &MBB, MachineBasicBlock::iterator I) const;
 };

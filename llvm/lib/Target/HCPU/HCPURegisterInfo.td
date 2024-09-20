@@ -39,6 +39,10 @@ let Namespace = "HCPU" in {
   def SW   : HCPUGPRReg<15, "sw">,   DwarfRegNum<[15]>;
 //  def MAR  : Register< 16, "mar">,  DwarfRegNum<[16]>;
 //  def MDR  : Register< 17, "mdr">,  DwarfRegNum<[17]>;
+  // Hi/Lo registers number and name
+  def HI   : HCPUReg<0, "ac0">, DwarfRegNum<[18]>;
+  def LO   : HCPUReg<0, "ac0">, DwarfRegNum<[19]>;
+
 
   def PC   : HCPUC0Reg<0, "pc">,  DwarfRegNum<[20]>;
   def EPC  : HCPUC0Reg<1, "epc">, DwarfRegNum<[21]>;
@@ -62,3 +66,6 @@ def SR     : RegisterClass<"HCPU", [i32], 32, (add SW)>;
 
 //@Co-processor 0 Registers class
 def C0Regs : RegisterClass<"HCPU", [i32], 32, (add PC, EPC)>;
+
+// Hi/Lo Registers class
+def HILO   : RegisterClass<"HCPU", [i32], 32, (add HI, LO)>;

@@ -38,7 +38,7 @@
 #include <memory>
 using namespace llvm;
 
-#define DEBUG_TYPE "HCPU-isel"
+#define DEBUG_TYPE "hcpu-se-isel"
 
 void HCPUSEDAGToDAGISelLegacy::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<DominatorTreeWrapperPass>();
@@ -51,6 +51,25 @@ bool HCPUSEDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
 }
 
 void HCPUSEDAGToDAGISel::processFunctionAfterISel(MachineFunction &MF) {}
+
+/// Select multiply instructions.
+std::pair<SDNode *, SDNode *>
+HCPUSEDAGToDAGISel::selectMULT(SDNode *N, unsigned Opc, const SDLoc &DL, EVT Ty,
+                               bool HasLo, bool HasHi) {
+  SDNode *Lo = 0, *Hi = 0;
+  SDNode *Mul = CurDAG->getMachineNode(Opc, DL, MVT::Glue, N->getOperand(0),
+                                       N->getOperand(1));
+  SDValue InFlag = SDValue(Mul, 0);
+
+  if (HasLo) {
+    Lo = CurDAG->getMachineNode(HCPU::MFLO, DL, Ty, MVT::Glue, InFlag);
+    InFlag = SDValue(Lo, 1);
+  }
+  if (HasHi)
+    Hi = CurDAG->getMachineNode(HCPU::MFHI, DL, Ty, InFlag);
+
+  return std::make_pair(Lo, Hi);
+}
 
 //@selectNode
 bool HCPUSEDAGToDAGISel::trySelect(SDNode *Node) {
@@ -72,6 +91,23 @@ bool HCPUSEDAGToDAGISel::trySelect(SDNode *Node) {
   switch (Opcode) {
   default:
     break;
+  case ISD::MULHS:
+  case ISD::MULHU: {
+    MultOpc = (Opcode == ISD::MULHU ? HCPU::MULTu : HCPU::MULT);
+    auto LoHi = selectMULT(Node, MultOpc, DL, NodeTy, false, true);
+    ReplaceNode(Node, LoHi.second);
+    return true;
+  }
+
+  case ISD::Constant: {
+    const ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Node);
+    unsigned Size = CN->getValueSizeInBits(0);
+
+    if (Size == 32)
+      break;
+
+    return true;
+  }
   }
 
   return false;
@@ -86,4 +122,3 @@ FunctionPass *llvm::createHCPUSEISelDag(HCPUTargetMachine &TM,
                                         CodeGenOptLevel OptLevel) {
   return new HCPUSEDAGToDAGISelLegacy(TM, OptLevel);
 }
-

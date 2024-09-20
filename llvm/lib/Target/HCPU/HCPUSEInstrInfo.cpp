@@ -145,3 +145,38 @@ loadRegFromStack(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   BuildMI(MBB, I, DL, get(Opc), DestReg).addFrameIndex(FI).addImm(Offset)
     .addMemOperand(MMO);
 }
+
+void HCPUSEInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
+                                  MachineBasicBlock::iterator I,
+                                  const DebugLoc &DL, MCRegister DestReg,
+                                  MCRegister SrcReg, bool KillSrc) const {
+  unsigned Opc = 0, ZeroReg = 0;
+
+  if (HCPU::CPURegsRegClass.contains(DestReg)) { // Copy to CPU Reg.
+    if (HCPU::CPURegsRegClass.contains(SrcReg))
+      Opc = HCPU::ADDu, ZeroReg = HCPU::ZERO;
+    else if (SrcReg == HCPU::HI)
+      Opc = HCPU::MFHI, SrcReg = 0;
+    else if (SrcReg == HCPU::LO)
+      Opc = HCPU::MFLO, SrcReg = 0;
+  }
+  else if (HCPU::CPURegsRegClass.contains(SrcReg)) { // Copy from CPU Reg.
+    if (DestReg == HCPU::HI)
+      Opc = HCPU::MTHI, DestReg = 0;
+    else if (DestReg == HCPU::LO)
+      Opc = HCPU::MTLO, DestReg = 0;
+  }
+
+  assert(Opc && "Cannot copy registers");
+
+  MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(Opc));
+
+  if (DestReg)
+    MIB.addReg(DestReg, RegState::Define);
+
+  if (ZeroReg)
+    MIB.addReg(ZeroReg);
+
+  if (SrcReg)
+    MIB.addReg(SrcReg, getKillRegState(KillSrc));
+}
