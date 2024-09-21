@@ -28,6 +28,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/EndianStream.h"
 
 #define DEBUG_TYPE "mccodeemitter"
 
@@ -89,7 +90,7 @@ void HCPUMCCodeEmitter::encodeInstruction(const MCInst &MI,
   auto Endian = IsLittleEndian ? endianness::little : endianness::big;
 
   // EmitInstruction(Binary, Size, OS);
-  support::endian::write<uint32_t>(&CB, Binary, Endian);
+  support::endian::write<uint32_t>(CB, Binary, Endian);
 }
 
 //@getExprOpValue {
