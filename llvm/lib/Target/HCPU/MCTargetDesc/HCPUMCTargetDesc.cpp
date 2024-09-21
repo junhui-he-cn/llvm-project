@@ -13,6 +13,7 @@
 
 #include "HCPUMCTargetDesc.h"
 #include "HCPUMCAsmInfo.h"
+#include "HCPUTargetStreamer.h"
 #include "InstPrinter/HCPUInstPrinter.h"
 #include "TargetInfo/HCPUTargetInfo.h"
 #include "llvm/MC/MCELFStreamer.h"
@@ -115,6 +116,21 @@ static MCInstrAnalysis *createHCPUMCInstrAnalysis(const MCInstrInfo *Info) {
   return new HCPUMCInstrAnalysis(Info);
 }
 
+static MCStreamer *createMCStreamer(const Triple &TT, MCContext &Context,
+                                    std::unique_ptr<MCAsmBackend> &&MAB,
+                                    std::unique_ptr<MCObjectWriter> &&OW,
+                                    std::unique_ptr<MCCodeEmitter> &&Emitter) {
+  return createELFStreamer(Context, std::move(MAB), std::move(OW),
+                           std::move(Emitter));
+  ;
+}
+
+static MCTargetStreamer *createHCPUAsmTargetStreamer(MCStreamer &S,
+                                                     formatted_raw_ostream &OS,
+                                                     MCInstPrinter *InstPrint) {
+  return new HCPUTargetAsmStreamer(S, OS);
+}
+
 //@2 {
 extern "C" void LLVMInitializeHCPUTargetMC() {
 
@@ -140,5 +156,19 @@ extern "C" void LLVMInitializeHCPUTargetMC() {
   // Register the MCInstPrinter.
   TargetRegistry::RegisterMCInstPrinter(getTheHCPUTarget(),
                                         createHCPUMCInstPrinter);
+
+  // Register the elf streamer.
+  TargetRegistry::RegisterELFStreamer(getTheHCPUTarget(), createMCStreamer);
+
+  // Register the asm target streamer.
+  TargetRegistry::RegisterAsmTargetStreamer(getTheHCPUTarget(), createHCPUAsmTargetStreamer);
+
+  // Register the asm backend.
+  TargetRegistry::RegisterMCAsmBackend(getTheHCPUTarget(), createHCPUAsmBackend);
+  // Register the MC Code Emitter
+  TargetRegistry::RegisterMCCodeEmitter(getTheHCPUTarget(),
+                                        createHCPUMCCodeEmitterEB);
+  TargetRegistry::RegisterMCCodeEmitter(getTheHCPUTarget(),
+                                        createHCPUMCCodeEmitterEL);
 }
 //@2 }

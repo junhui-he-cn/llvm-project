@@ -14,6 +14,7 @@
 #include "HCPUInstPrinter.h"
 
 #include "HCPUInstrInfo.h"
+#include "MCTargetDesc/HCPUMCExpr.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"

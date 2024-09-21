@@ -1,0 +1,163 @@
+//===-- HCPUMCCodeEmitter.cpp - Convert HCPU Code to Machine Code ---------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file implements the HCPUMCCodeEmitter class.
+//
+//===----------------------------------------------------------------------===//
+//
+
+#include "HCPUMCCodeEmitter.h"
+
+#include "MCTargetDesc/HCPUBaseInfo.h"
+#include "MCTargetDesc/HCPUFixupKinds.h"
+#include "MCTargetDesc/HCPUMCExpr.h"
+#include "MCTargetDesc/HCPUMCTargetDesc.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "mccodeemitter"
+
+#define GET_INSTRMAP_INFO
+#include "HCPUGenInstrInfo.inc"
+#undef GET_INSTRMAP_INFO
+
+using namespace llvm;
+
+MCCodeEmitter *llvm::createHCPUMCCodeEmitterEB(const MCInstrInfo &MCII,
+                                               MCContext &Ctx) {
+  return new HCPUMCCodeEmitter(MCII, Ctx, false);
+}
+
+MCCodeEmitter *llvm::createHCPUMCCodeEmitterEL(const MCInstrInfo &MCII,
+                                               MCContext &Ctx) {
+  return new HCPUMCCodeEmitter(MCII, Ctx, true);
+}
+
+void HCPUMCCodeEmitter::EmitByte(unsigned char C, raw_ostream &OS) const {
+  OS << (char)C;
+}
+
+void HCPUMCCodeEmitter::EmitInstruction(uint64_t Val, unsigned Size,
+                                        raw_ostream &OS) const {
+  // Output the instruction encoding in little endian byte order.
+  for (unsigned i = 0; i < Size; ++i) {
+    unsigned Shift = IsLittleEndian ? i * 8 : (Size - 1 - i) * 8;
+    EmitByte((Val >> Shift) & 0xff, OS);
+  }
+}
+
+/// encodeInstruction - Emit the instruction.
+/// Size the instruction (currently only 4 bytes)
+void HCPUMCCodeEmitter::encodeInstruction(const MCInst &MI,
+                                          SmallVectorImpl<char> &CB,
+                                          SmallVectorImpl<MCFixup> &Fixups,
+                                          const MCSubtargetInfo &STI) const {
+  uint32_t Binary = getBinaryCodeForInstr(MI, Fixups, STI);
+
+  // Check for unimplemented opcodes.
+  // Unfortunately in HCPU both NOT and SLL will come in with Binary == 0
+  // so we have to special check for them.
+  unsigned Opcode = MI.getOpcode();
+  if ((Opcode != HCPU::NOP) && (Opcode != HCPU::SHL) && !Binary)
+    llvm_unreachable("unimplemented opcode in encodeInstruction()");
+
+  const MCInstrDesc &Desc = MCII.get(MI.getOpcode());
+  uint64_t TSFlags = Desc.TSFlags;
+
+  // Pseudo instructions don't get encoded and shouldn't be here
+  // in the first place!
+  if ((TSFlags & HCPUII::FormMask) == HCPUII::Pseudo)
+    llvm_unreachable("Pseudo opcode found in encodeInstruction()");
+
+  // For now all instructions are 4 bytes
+  int Size = 4; // FIXME: Have Desc.getSize() return the correct value!
+
+  auto Endian = IsLittleEndian ? endianness::little : endianness::big;
+
+  // EmitInstruction(Binary, Size, OS);
+  support::endian::write<uint32_t>(&CB, Binary, Endian);
+}
+
+//@getExprOpValue {
+unsigned HCPUMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
+                                           SmallVectorImpl<MCFixup> &Fixups,
+                                           const MCSubtargetInfo &STI) const {
+  //@getExprOpValue body {
+  MCExpr::ExprKind Kind = Expr->getKind();
+  if (Kind == MCExpr::Constant) {
+    return cast<MCConstantExpr>(Expr)->getValue();
+  }
+
+  if (Kind == MCExpr::Binary) {
+    unsigned Res =
+        getExprOpValue(cast<MCBinaryExpr>(Expr)->getLHS(), Fixups, STI);
+    Res += getExprOpValue(cast<MCBinaryExpr>(Expr)->getRHS(), Fixups, STI);
+    return Res;
+  }
+
+  if (Kind == MCExpr::Target) {
+    const HCPUMCExpr *HCPUExpr = cast<HCPUMCExpr>(Expr);
+
+    HCPU::Fixups FixupKind = HCPU::Fixups(0);
+    switch (HCPUExpr->getKind()) {
+    default:
+      llvm_unreachable("Unsupported fixup kind for target expression!");
+    } // switch
+    Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(FixupKind)));
+    return 0;
+  }
+
+  // All of the information is in the fixup.
+  return 0;
+}
+
+/// getMachineOpValue - Return binary encoding of operand. If the machine
+/// operand requires relocation, record the relocation and return zero.
+unsigned
+HCPUMCCodeEmitter::getMachineOpValue(const MCInst &MI, const MCOperand &MO,
+                                     SmallVectorImpl<MCFixup> &Fixups,
+                                     const MCSubtargetInfo &STI) const {
+  if (MO.isReg()) {
+    unsigned Reg = MO.getReg();
+    unsigned RegNo = Ctx.getRegisterInfo()->getEncodingValue(Reg);
+    return RegNo;
+  } else if (MO.isImm()) {
+    return static_cast<unsigned>(MO.getImm());
+  } else if (MO.isDFPImm()) {
+    return static_cast<unsigned>(bit_cast<double>(MO.getDFPImm()));
+  }
+  // MO must be an Expr.
+  assert(MO.isExpr());
+  return getExprOpValue(MO.getExpr(), Fixups, STI);
+}
+
+/// getMemEncoding - Return binary encoding of memory related operand.
+/// If the offset operand requires relocation, record the relocation.
+unsigned HCPUMCCodeEmitter::getMemEncoding(const MCInst &MI, unsigned OpNo,
+                                           SmallVectorImpl<MCFixup> &Fixups,
+                                           const MCSubtargetInfo &STI) const {
+  // Base register is encoded in bits 20-16, offset is encoded in bits 15-0.
+  assert(MI.getOperand(OpNo).isReg());
+  unsigned RegBits = getMachineOpValue(MI, MI.getOperand(OpNo), Fixups, STI)
+                     << 16;
+  unsigned OffBits =
+      getMachineOpValue(MI, MI.getOperand(OpNo + 1), Fixups, STI);
+
+  return (OffBits & 0xFFFF) | RegBits;
+}
+
+#include "HCPUGenMCCodeEmitter.inc"

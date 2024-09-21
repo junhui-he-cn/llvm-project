@@ -10,6 +10,7 @@
 #ifndef LLVM_LIB_TARGET_HCPU_HCPUMCINSTLOWER_H
 #define LLVM_LIB_TARGET_HCPU_HCPUMCINSTLOWER_H
 
+#include "MCTargetDesc/HCPUMCExpr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/Support/Compiler.h"
