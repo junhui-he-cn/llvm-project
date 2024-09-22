@@ -19,7 +19,7 @@ def IMULDIV : FuncUnit;
 //===----------------------------------------------------------------------===//
 
 def IIAlu : InstrItinClass;
-def II_CL0 : InstrItinClass;
+def II_CLO : InstrItinClass;
 def II_CLZ : InstrItinClass;
 def IILoad : InstrItinClass;
 def IIStore : InstrItinClass;
@@ -37,7 +37,7 @@ def IIIdiv : InstrItinClass;
 
 def HCPUGenericItineraries : ProcessorItineraries<[ALU, IMULDIV], [], [
   InstrItinData<IIAlu, [InstrStage<1, [ALU]>]>,
-  InstrItinData<II_CL0, [InstrStage<1, [ALU]>]>,
+  InstrItinData<II_CLO, [InstrStage<1, [ALU]>]>,
   InstrItinData<II_CLZ, [InstrStage<1, [ALU]>]>,
   InstrItinData<IILoad, [InstrStage<3, [ALU]>]>,
   InstrItinData<IIStore, [InstrStage<1, [ALU]>]>,

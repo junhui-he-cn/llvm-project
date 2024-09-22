@@ -71,6 +71,12 @@ public:
   const char *getTargetNodeName(unsigned Opcode) const override;
 
 protected:
+  bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
+
+  /// getSetCCResultType - get the ISD::SETCC result ValueType
+  EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
+                         EVT VT) const override;
+
   SDValue getGlobalReg(SelectionDAG &DAG, EVT Ty) const;
 
   // This method creates the following nodes, which are necessary for

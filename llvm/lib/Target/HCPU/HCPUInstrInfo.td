@@ -72,6 +72,12 @@ def mem : Operand<iPTR> {
   let EncoderMethod = "getMemEncoding";
 }
 
+def mem_ea : Operand<iPTR> {
+  let PrintMethod = "printMemOperandEA";
+  let MIOperandInfo = (ops GPROut, simm16);
+  let EncoderMethod = "getMemEncoding";
+}
+
 def immSExt16 : PatLeaf<(imm), [{ return isInt<16>(N->getSExtValue()); }]>;
 
 // Node immediate fits as 16-bit zero extended on target immediate.
@@ -571,3 +577,49 @@ class WrapperPat<SDNode node, Instruction ORiOp, RegisterClass RC>:
               (ORiOp RC:$gp, node:$in)>;
 
 def : WrapperPat<tglobaladdr, ORi, GPROut>;
+
+class EffectiveAddress<string instr_asm, RegisterClass RC, Operand Mem> :
+  FMem<0x09, (outs RC:$ra), (ins Mem:$addr),
+     instr_asm, [(set RC:$ra, addr:$addr)], IIAlu>;
+
+// FrameIndexes are legalized when they are operands from load/store
+// instructions. The same not happens for stack address copies, so an
+// add op with mem ComplexPattern is used and the stack address copy
+// can be matched. It's similar to Sparc LEA_ADDRi
+def LEA_ADDiu : EffectiveAddress<"addiu\t$ra, $addr", CPURegs, mem_ea> {
+  let isCodeGenOnly = 1;
+}
+
+def sextloadi16_a   : AlignedLoad<sextloadi16>;
+def zextloadi16_a   : AlignedLoad<zextloadi16>;
+def extloadi16_a    : AlignedLoad<extloadi16>;
+
+def truncstorei16_a : AlignedStore<truncstorei16>;
+
+def LB     : LoadM32<0x03, "lb",  sextloadi8>;
+def LBu    : LoadM32<0x04, "lbu", zextloadi8>;
+def SB     : StoreM32<0x05, "sb", truncstorei8>;
+def LH     : LoadM32<0x06, "lh",  sextloadi16_a>;
+def LHu    : LoadM32<0x07, "lhu", zextloadi16_a>;
+def SH     : StoreM32<0x08, "sh", truncstorei16_a>;
+
+// Count Leading Ones/Zeros in Word
+class CountLeading0<bits<8> op, string instr_asm, RegisterClass RC>:
+  FA<op, (outs GPROut:$ra), (ins RC:$rb),
+     !strconcat(instr_asm, "\t$ra, $rb"),
+     [(set GPROut:$ra, (ctlz RC:$rb))], II_CLZ> {
+  let rc = 0;
+  let shamt = 0;
+}
+
+class CountLeading1<bits<8> op, string instr_asm, RegisterClass RC>:
+  FA<op, (outs GPROut:$ra), (ins RC:$rb),
+     !strconcat(instr_asm, "\t$ra, $rb"),
+     [(set GPROut:$ra, (ctlz (not RC:$rb)))], II_CLO> {
+  let rc = 0;
+  let shamt = 0;
+}
+
+/// Count Leading
+def CLZ : CountLeading0<0x15, "clz", CPURegs>;
+def CLO : CountLeading1<0x16, "clo", CPURegs>;

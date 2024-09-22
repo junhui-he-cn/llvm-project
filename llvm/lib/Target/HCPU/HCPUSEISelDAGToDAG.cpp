@@ -71,6 +71,34 @@ HCPUSEDAGToDAGISel::selectMULT(SDNode *N, unsigned Opc, const SDLoc &DL, EVT Ty,
   return std::make_pair(Lo, Hi);
 }
 
+void HCPUSEDAGToDAGISel::selectAddESubE(unsigned MOp, SDValue InFlag,
+                                        SDValue CmpLHS, const SDLoc &DL,
+                                        SDNode *Node) const {
+  unsigned Opc = InFlag.getOpcode();
+  (void)Opc;
+  assert(((Opc == ISD::ADDC || Opc == ISD::ADDE) ||
+          (Opc == ISD::SUBC || Opc == ISD::SUBE)) &&
+         "(ADD|SUB)E flag operand must come from (ADD|SUB)C/E insn");
+
+  SDValue Ops[] = {CmpLHS, InFlag.getOperand(1)};
+  SDValue LHS = Node->getOperand(0), RHS = Node->getOperand(1);
+  EVT VT = LHS.getValueType();
+
+  SDNode *Carry;
+  if (Subtarget->hasHCPU32II())
+    Carry = CurDAG->getMachineNode(HCPU::SLTu, DL, VT, Ops);
+  else {
+    SDNode *StatusWord = CurDAG->getMachineNode(HCPU::CMP, DL, VT, Ops);
+    SDValue Constant1 = CurDAG->getTargetConstant(1, DL, VT);
+    Carry = CurDAG->getMachineNode(HCPU::ANDi, DL, VT, SDValue(StatusWord, 0),
+                                   Constant1);
+  }
+  SDNode *AddCarry =
+      CurDAG->getMachineNode(HCPU::ADDu, DL, VT, SDValue(Carry, 0), RHS);
+
+  CurDAG->SelectNodeTo(Node, MOp, VT, MVT::Glue, LHS, SDValue(AddCarry, 0));
+}
+
 //@selectNode
 bool HCPUSEDAGToDAGISel::trySelect(SDNode *Node) {
   unsigned Opcode = Node->getOpcode();
@@ -98,7 +126,6 @@ bool HCPUSEDAGToDAGISel::trySelect(SDNode *Node) {
     ReplaceNode(Node, LoHi.second);
     return true;
   }
-
   case ISD::Constant: {
     const ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Node);
     unsigned Size = CN->getValueSizeInBits(0);
@@ -106,6 +133,35 @@ bool HCPUSEDAGToDAGISel::trySelect(SDNode *Node) {
     if (Size == 32)
       break;
 
+    return true;
+  }
+  case ISD::SUBE: {
+    SDValue InFlag = Node->getOperand(2);
+    selectAddESubE(HCPU::SUBu, InFlag, InFlag.getOperand(0), DL, Node);
+    return true;
+  }
+
+  case ISD::ADDE: {
+    SDValue InFlag = Node->getOperand(2);
+    selectAddESubE(HCPU::ADDu, InFlag, InFlag.getValue(0), DL, Node);
+    return true;
+  }
+
+  /// Mul with two results
+  case ISD::SMUL_LOHI:
+  case ISD::UMUL_LOHI: {
+    MultOpc = (Opcode == ISD::UMUL_LOHI ? HCPU::MULTu : HCPU::MULT);
+
+    std::pair<SDNode *, SDNode *> LoHi =
+        selectMULT(Node, MultOpc, DL, NodeTy, true, true);
+
+    if (!SDValue(Node, 0).use_empty())
+      ReplaceUses(SDValue(Node, 0), SDValue(LoHi.first, 0));
+
+    if (!SDValue(Node, 1).use_empty())
+      ReplaceUses(SDValue(Node, 1), SDValue(LoHi.second, 0));
+
+    CurDAG->RemoveDeadNode(Node);
     return true;
   }
   }

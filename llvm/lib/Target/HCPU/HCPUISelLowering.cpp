@@ -93,6 +93,22 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
 
   setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
 
+  // HCPU does not have i1 type, so use i32 for
+  // setcc operations results (slt, sgt, ...).
+  setBooleanContents(ZeroOrOneBooleanContent);
+  setBooleanVectorContents(ZeroOrNegativeOneBooleanContent);
+
+  // Load extented operations for i1 types must be promoted
+  for (MVT VT : MVT::integer_valuetypes()) {
+    setLoadExtAction(ISD::EXTLOAD,  VT, MVT::i1,  Promote);
+    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i1,  Promote);
+    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i1,  Promote);
+  }
+    // Handle i64 shl
+  setOperationAction(ISD::SHL_PARTS,          MVT::i32,   Expand);
+  setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Expand);
+  setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Expand);
+
   setTargetDAGCombine(ISD::SDIVREM);
   setTargetDAGCombine(ISD::UDIVREM);
 }
@@ -369,4 +385,17 @@ SDValue HCPUTargetLowering::LowerGlobalAddress(SDValue Op,
   return getAddrGlobal(
       N, Ty, DAG, HCPUII::MO_GOT, DAG.getEntryNode(), 
       MachinePointerInfo::getGOT(DAG.getMachineFunction()));
+}
+
+bool
+HCPUTargetLowering::isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
+  // The HCPU target isn't yet aware of offsets.
+  return false;
+}
+
+EVT HCPUTargetLowering::getSetCCResultType(const DataLayout &, LLVMContext &,
+                                           EVT VT) const {
+  if (!VT.isVector())
+    return MVT::i32;
+  return VT.changeVectorElementTypeToInteger();
 }
