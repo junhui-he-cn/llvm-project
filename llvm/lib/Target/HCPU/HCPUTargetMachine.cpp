@@ -16,10 +16,10 @@
 
 #include "HCPUInstrInfo.h"
 #include "HCPUMachineFunction.h"
+#include "HCPUSEISelDAGToDAG.h"
 #include "HCPUSubtarget.h"
 #include "HCPUTargetObjectFile.h"
 #include "MCTargetDesc/HCPUABIInfo.h"
-#include "HCPUSEISelDAGToDAG.h"
 #include "TargetInfo/HCPUTargetInfo.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Attributes.h"
@@ -137,6 +137,8 @@ public:
   }
 
   bool addInstSelector() override;
+
+  void addPreEmitPass() override;
 };
 } // namespace
 
@@ -155,4 +157,15 @@ MachineFunctionInfo *HCPUTargetMachine::createMachineFunctionInfo(
     BumpPtrAllocator &Allocator, const Function &F,
     const TargetSubtargetInfo *STI) const {
   return HCPUFunctionInfo::create<HCPUFunctionInfo>(Allocator, F, STI);
+}
+
+// Implemented by targets that want to run passes immediately before
+// machine code is emitted. return true if -print-machineinstrs should
+// print out the code after the passes.
+void HCPUPassConfig::addPreEmitPass() {
+  HCPUTargetMachine &TM = getHCPUTargetMachine();
+  addPass(createHCPULongBranchPass(TM));
+  addPass(createHCPUDelJmpPass(TM));
+  addPass(createHCPUDelaySlotFillerPass(TM));
+  return;
 }

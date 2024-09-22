@@ -39,7 +39,13 @@ namespace HCPU {
     // Symbol fixup resulting in - R_HCPU_GOT16.
     fixup_HCPU_GOT,
 
-    
+    // PC relative branch fixup resulting in - R_HCPU_PC16.
+    // HCPU PC16, e.g. beq
+    fixup_HCPU_PC16,
+
+    // PC relative branch fixup resulting in - R_HCPU_PC24.
+    // HCPU PC24, e.g. jeq, jmp
+    fixup_HCPU_PC24,
 
     // resulting in - R_HCPU_GOT_HI16
     fixup_HCPU_GOT_HI16,

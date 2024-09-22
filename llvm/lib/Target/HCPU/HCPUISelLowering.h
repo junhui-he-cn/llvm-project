@@ -68,6 +68,8 @@ public:
   /// LowerOperation - Provide custom lowering hooks for some operations.
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
 
+  SDValue lowerSELECT(SDValue Op, SelectionDAG &DAG) const;
+
   const char *getTargetNodeName(unsigned Opcode) const override;
 
 protected:

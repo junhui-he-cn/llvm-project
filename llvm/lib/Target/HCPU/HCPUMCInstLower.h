@@ -36,9 +36,17 @@ public:
   void Lower(const MachineInstr *MI, MCInst &OutMI) const;
   MCOperand LowerOperand(const MachineOperand& MO, unsigned offset = 0) const;
   void LowerCPLOAD(SmallVector<MCInst, 4>& MCInsts);
-private:
+// private:
   MCOperand LowerSymbolOperand(const MachineOperand &MO,
                                MachineOperandType MOTy, unsigned Offset) const;
+  MCOperand createSub(MachineBasicBlock *BB1, MachineBasicBlock *BB2,
+                      HCPUMCExpr::HCPUExprKind Kind) const;
+  void lowerLongBranchLUi(const MachineInstr *MI, MCInst &OutMI) const;
+  void lowerLongBranchADDiu(const MachineInstr *MI, MCInst &OutMI,
+                            int Opcode,
+                            HCPUMCExpr::HCPUExprKind Kind) const;
+  bool lowerLongBranch(const MachineInstr *MI, MCInst &OutMI) const;
+
 };
 }
 

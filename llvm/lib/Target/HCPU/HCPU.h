@@ -16,15 +16,17 @@
 #define LLVM_LIB_TARGET_HCPU_HCPU_H
 
 #include "MCTargetDesc/HCPUMCTargetDesc.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/PassRegistry.h"
+#include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
 class HCPUTargetMachine;
 class FunctionPass;
 
-
 void initializeHCPUDAGToDAGISelLegacyPass(PassRegistry &);
+FunctionPass *createHCPULongBranchPass(HCPUTargetMachine &TM);
+FunctionPass *createHCPUDelJmpPass(HCPUTargetMachine &TM);
+FunctionPass *createHCPUDelaySlotFillerPass(HCPUTargetMachine &TM);
 } // namespace llvm
 
 #endif

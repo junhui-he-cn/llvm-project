@@ -56,7 +56,9 @@ public:
 
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
                    const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
-                   bool KillSrc) const override;  
+                   bool KillSrc) const override;
+
+  unsigned getOppositeBranchOpc(unsigned Opc) const override;
 
 private:
   void expandRetLR(MachineBasicBlock &MBB, MachineBasicBlock::iterator I) const;

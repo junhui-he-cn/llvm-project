@@ -84,12 +84,12 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
   setOperationAction(ISD::UDIV, MVT::i32, Expand);
   setOperationAction(ISD::UREM, MVT::i32, Expand);
 
-    // HCPU doesn't have sext_inreg, replace them with shl/sra.
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1 , Expand);
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8 , Expand);
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16 , Expand);
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32 , Expand);
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::Other , Expand);
+  // HCPU doesn't have sext_inreg, replace them with shl/sra.
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::Other, Expand);
 
   setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
 
@@ -100,14 +100,18 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
 
   // Load extented operations for i1 types must be promoted
   for (MVT VT : MVT::integer_valuetypes()) {
-    setLoadExtAction(ISD::EXTLOAD,  VT, MVT::i1,  Promote);
-    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i1,  Promote);
-    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i1,  Promote);
+    setLoadExtAction(ISD::EXTLOAD, VT, MVT::i1, Promote);
+    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i1, Promote);
+    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i1, Promote);
   }
-    // Handle i64 shl
-  setOperationAction(ISD::SHL_PARTS,          MVT::i32,   Expand);
-  setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Expand);
-  setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Expand);
+  // Handle i64 shl
+  setOperationAction(ISD::SHL_PARTS, MVT::i32, Expand);
+  setOperationAction(ISD::SRA_PARTS, MVT::i32, Expand);
+  setOperationAction(ISD::SRL_PARTS, MVT::i32, Expand);
+
+  setOperationAction(ISD::SELECT, MVT::i32, Custom);
+  setOperationAction(ISD::SELECT_CC, MVT::i32, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::Other, Expand);
 
   setTargetDAGCombine(ISD::SDIVREM);
   setTargetDAGCombine(ISD::UDIVREM);
@@ -280,7 +284,7 @@ MVT HCPUTargetLowering::HCPUCC::getRegVT(MVT VT, bool IsSoftFloat) const {
   return VT;
 }
 
-static SDValue performDivRemCombine(SDNode *N, SelectionDAG& DAG,
+static SDValue performDivRemCombine(SDNode *N, SelectionDAG &DAG,
                                     TargetLowering::DAGCombinerInfo &DCI,
                                     const HCPUSubtarget &Subtarget) {
   if (DCI.isBeforeLegalizeOps())
@@ -289,19 +293,18 @@ static SDValue performDivRemCombine(SDNode *N, SelectionDAG& DAG,
   EVT Ty = N->getValueType(0);
   unsigned LO = HCPU::LO;
   unsigned HI = HCPU::HI;
-  unsigned Opc = N->getOpcode() == ISD::SDIVREM ? HCPUISD::DivRem :
-                                                  HCPUISD::DivRemU;
+  unsigned Opc =
+      N->getOpcode() == ISD::SDIVREM ? HCPUISD::DivRem : HCPUISD::DivRemU;
   SDLoc DL(N);
 
-  SDValue DivRem = DAG.getNode(Opc, DL, MVT::Glue,
-                               N->getOperand(0), N->getOperand(1));
+  SDValue DivRem =
+      DAG.getNode(Opc, DL, MVT::Glue, N->getOperand(0), N->getOperand(1));
   SDValue InChain = DAG.getEntryNode();
   SDValue InGlue = DivRem;
 
   // insert MFLO
   if (N->hasAnyUseOfValue(0)) {
-    SDValue CopyFromLo = DAG.getCopyFromReg(InChain, DL, LO, Ty,
-                                            InGlue);
+    SDValue CopyFromLo = DAG.getCopyFromReg(InChain, DL, LO, Ty, InGlue);
     DAG.ReplaceAllUsesOfValueWith(SDValue(N, 0), CopyFromLo);
     InChain = CopyFromLo.getValue(1);
     InGlue = CopyFromLo.getValue(2);
@@ -309,21 +312,21 @@ static SDValue performDivRemCombine(SDNode *N, SelectionDAG& DAG,
 
   // insert MFHI
   if (N->hasAnyUseOfValue(1)) {
-    SDValue CopyFromHi = DAG.getCopyFromReg(InChain, DL,
-                                            HI, Ty, InGlue);
+    SDValue CopyFromHi = DAG.getCopyFromReg(InChain, DL, HI, Ty, InGlue);
     DAG.ReplaceAllUsesOfValueWith(SDValue(N, 1), CopyFromHi);
   }
 
   return SDValue();
 }
 
-SDValue HCPUTargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
-  const {
+SDValue HCPUTargetLowering::PerformDAGCombine(SDNode *N,
+                                              DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
   unsigned Opc = N->getOpcode();
 
   switch (Opc) {
-  default: break;
+  default:
+    break;
   case ISD::SDIVREM:
   case ISD::UDIVREM:
     return performDivRemCombine(N, DAG, DCI, Subtarget);
@@ -332,24 +335,23 @@ SDValue HCPUTargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
   return SDValue();
 }
 
-SDValue HCPUTargetLowering::
-LowerOperation(SDValue Op, SelectionDAG &DAG) const
-{
-  switch (Op.getOpcode())
-  {
-  case ISD::GlobalAddress:      return LowerGlobalAddress(Op, DAG);
+SDValue HCPUTargetLowering::LowerOperation(SDValue Op,
+                                           SelectionDAG &DAG) const {
+  switch (Op.getOpcode()) {
+  case ISD::GlobalAddress:
+    return LowerGlobalAddress(Op, DAG);
+  case ISD::SELECT:
+    return lowerSELECT(Op, DAG);
   }
   return SDValue();
 }
-
 
 SDValue HCPUTargetLowering::LowerGlobalAddress(SDValue Op,
                                                SelectionDAG &DAG) const {
   //@lowerGlobalAddress }
   SDLoc DL(Op);
-  const HCPUTargetObjectFile *TLOF =
-        static_cast<const HCPUTargetObjectFile *>(
-            getTargetMachine().getObjFileLowering());
+  const HCPUTargetObjectFile *TLOF = static_cast<const HCPUTargetObjectFile *>(
+      getTargetMachine().getObjFileLowering());
   //@lga 1 {
   EVT Ty = Op.getValueType();
   GlobalAddressSDNode *N = cast<GlobalAddressSDNode>(Op);
@@ -360,10 +362,10 @@ SDValue HCPUTargetLowering::LowerGlobalAddress(SDValue Op,
     //@ %gp_rel relocation
     const GlobalObject *GO = GV->getAliaseeObject();
     if (GO && TLOF->IsGlobalInSmallSection(GO, getTargetMachine())) {
-      SDValue GA = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
-                                              HCPUII::MO_GPREL);
-      SDValue GPRelNode = DAG.getNode(HCPUISD::GPRel, DL,
-                                      DAG.getVTList(MVT::i32), GA);
+      SDValue GA =
+          DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0, HCPUII::MO_GPREL);
+      SDValue GPRelNode =
+          DAG.getNode(HCPUISD::GPRel, DL, DAG.getVTList(MVT::i32), GA);
       SDValue GPReg = DAG.getRegister(HCPU::GP, MVT::i32);
       return DAG.getNode(ISD::ADD, DL, MVT::i32, GPReg, GPRelNode);
     }
@@ -379,16 +381,15 @@ SDValue HCPUTargetLowering::LowerGlobalAddress(SDValue Op,
   const GlobalObject *GO = GV->getAliaseeObject();
   if (GO && !TLOF->IsGlobalInSmallSection(GO, getTargetMachine()))
     return getAddrGlobalLargeGOT(
-        N, Ty, DAG, HCPUII::MO_GOT_HI16, HCPUII::MO_GOT_LO16, 
-        DAG.getEntryNode(), 
+        N, Ty, DAG, HCPUII::MO_GOT_HI16, HCPUII::MO_GOT_LO16,
+        DAG.getEntryNode(),
         MachinePointerInfo::getGOT(DAG.getMachineFunction()));
-  return getAddrGlobal(
-      N, Ty, DAG, HCPUII::MO_GOT, DAG.getEntryNode(), 
-      MachinePointerInfo::getGOT(DAG.getMachineFunction()));
+  return getAddrGlobal(N, Ty, DAG, HCPUII::MO_GOT, DAG.getEntryNode(),
+                       MachinePointerInfo::getGOT(DAG.getMachineFunction()));
 }
 
-bool
-HCPUTargetLowering::isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
+bool HCPUTargetLowering::isOffsetFoldingLegal(
+    const GlobalAddressSDNode *GA) const {
   // The HCPU target isn't yet aware of offsets.
   return false;
 }
@@ -398,4 +399,8 @@ EVT HCPUTargetLowering::getSetCCResultType(const DataLayout &, LLVMContext &,
   if (!VT.isVector())
     return MVT::i32;
   return VT.changeVectorElementTypeToInteger();
+}
+
+SDValue HCPUTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
+  return Op;
 }

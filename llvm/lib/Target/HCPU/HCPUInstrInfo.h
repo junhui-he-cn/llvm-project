@@ -82,6 +82,8 @@ public:
 
   MachineMemOperand *GetMemOperand(MachineBasicBlock &MBB, int FI,
                                    MachineMemOperand::Flags Flags) const;
+
+  virtual unsigned getOppositeBranchOpc(unsigned Opc) const = 0;
 };
 
 const HCPUInstrInfo *createHCPUSEInstrInfo(const HCPUSubtarget &STI);

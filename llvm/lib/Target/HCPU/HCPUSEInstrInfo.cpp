@@ -180,3 +180,13 @@ void HCPUSEInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   if (SrcReg)
     MIB.addReg(SrcReg, getKillRegState(KillSrc));
 }
+
+/// getOppositeBranchOpc - Return the inverse of the specified
+/// opcode, e.g. turning BEQ to BNE.
+unsigned HCPUSEInstrInfo::getOppositeBranchOpc(unsigned Opc) const {
+  switch (Opc) {
+  default:           llvm_unreachable("Illegal opcode!");
+  case HCPU::BEQ:    return HCPU::BNE;
+  case HCPU::BNE:    return HCPU::BEQ;
+  }
+}

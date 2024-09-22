@@ -70,6 +70,9 @@ MCOperand HCPUMCInstLower::LowerOperand(const MachineOperand &MO,
 void HCPUMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
   OutMI.setOpcode(MI->getOpcode());
 
+  if (lowerLongBranch(MI, OutMI))
+    return;
+
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     const MachineOperand &MO = MI->getOperand(i);
     MCOperand MCOp = LowerOperand(MO);
@@ -163,4 +166,57 @@ MCOperand HCPUMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
     Expr = HCPUMCExpr::create(TargetKind, Expr, *Ctx);
 
   return MCOperand::createExpr(Expr);
+}
+
+MCOperand HCPUMCInstLower::createSub(MachineBasicBlock *BB1,
+                                     MachineBasicBlock *BB2,
+                                     HCPUMCExpr::HCPUExprKind Kind) const {
+  const MCSymbolRefExpr *Sym1 = MCSymbolRefExpr::create(BB1->getSymbol(), *Ctx);
+  const MCSymbolRefExpr *Sym2 = MCSymbolRefExpr::create(BB2->getSymbol(), *Ctx);
+  const MCBinaryExpr *Sub = MCBinaryExpr::createSub(Sym1, Sym2, *Ctx);
+
+  return MCOperand::createExpr(HCPUMCExpr::create(Kind, Sub, *Ctx));
+}
+
+void HCPUMCInstLower::lowerLongBranchLUi(const MachineInstr *MI,
+                                         MCInst &OutMI) const {
+  OutMI.setOpcode(HCPU::LUi);
+
+  // Lower register operand.
+  OutMI.addOperand(LowerOperand(MI->getOperand(0)));
+
+  // Create %hi($tgt-$baltgt).
+  OutMI.addOperand(createSub(MI->getOperand(1).getMBB(),
+                             MI->getOperand(2).getMBB(),
+                             HCPUMCExpr::CEK_ABS_HI));
+}
+
+void HCPUMCInstLower::lowerLongBranchADDiu(
+    const MachineInstr *MI, MCInst &OutMI, int Opcode,
+    HCPUMCExpr::HCPUExprKind Kind) const {
+  OutMI.setOpcode(Opcode);
+
+  // Lower two register operands.
+  for (unsigned I = 0, E = 2; I != E; ++I) {
+    const MachineOperand &MO = MI->getOperand(I);
+    OutMI.addOperand(LowerOperand(MO));
+  }
+
+  // Create %lo($tgt-$baltgt) or %hi($tgt-$baltgt).
+  OutMI.addOperand(
+      createSub(MI->getOperand(2).getMBB(), MI->getOperand(3).getMBB(), Kind));
+}
+
+bool HCPUMCInstLower::lowerLongBranch(const MachineInstr *MI,
+                                      MCInst &OutMI) const {
+  switch (MI->getOpcode()) {
+  default:
+    return false;
+  case HCPU::LONG_BRANCH_LUi:
+    lowerLongBranchLUi(MI, OutMI);
+    return true;
+  case HCPU::LONG_BRANCH_ADDiu:
+    lowerLongBranchADDiu(MI, OutMI, HCPU::ADDiu, HCPUMCExpr::CEK_ABS_LO);
+    return true;
+  }
 }
