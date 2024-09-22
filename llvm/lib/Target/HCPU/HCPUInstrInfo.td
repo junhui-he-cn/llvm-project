@@ -432,7 +432,7 @@ multiclass SeteqPatsCmp<RegisterClass RC> {
 multiclass SetltPatsCmp<RegisterClass RC> {
   def : Pat<(setlt RC:$lhs, RC:$rhs),
             (ANDi (CMP RC:$lhs, RC:$rhs), 1)>;
-// if cpu0  `define N    `SW[31]  instead of `SW[0] // Negative flag, then need
+// if HCPU  `define N    `SW[31]  instead of `SW[0] // Negative flag, then need
 // 2 more instructions as follows,
 //          (XORi (ANDi (SHR (CMP RC:$lhs, RC:$rhs), (LUi 0x8000), 31), 1), 1)>;
   def : Pat<(setult RC:$lhs, RC:$rhs),
@@ -542,3 +542,32 @@ def : Pat<(i32 immLow16Zero:$in),
 // Arbitrary immediates
 def : Pat<(i32 imm:$imm),
           (ORi (LUi (HI16 imm:$imm)), (LO16 imm:$imm))>;
+
+// Hi and Lo nodes are used to handle global addresses. Used on
+// HCPUISelLowering to lower stuff like GlobalAddress, ExternalSymbol
+// static model. (nothing to do with HCPU Registers Hi and Lo)
+def HCPUHi    : SDNode<"HCPUISD::Hi", SDTIntUnaryOp>;
+def HCPULo    : SDNode<"HCPUISD::Lo", SDTIntUnaryOp>;
+def HCPUGPRel : SDNode<"HCPUISD::GPRel", SDTIntUnaryOp>;
+
+def HCPUWrapper    : SDNode<"HCPUISD::Wrapper", SDTIntBinOp>;
+def RelocPIC    :     Predicate<"TM.getRelocationModel() == Reloc::PIC_">;
+
+// hi/lo relocs
+def : Pat<(HCPUHi tglobaladdr:$in), (LUi tglobaladdr:$in)>;
+def : Pat<(HCPULo tglobaladdr:$in), (ORi ZERO, tglobaladdr:$in)>;
+
+def : Pat<(add CPURegs:$hi, (HCPULo tglobaladdr:$lo)),
+          (ORi CPURegs:$hi, tglobaladdr:$lo)>;
+
+// gp_rel relocs
+def : Pat<(add CPURegs:$gp, (HCPUGPRel tglobaladdr:$in)),
+          (ORi CPURegs:$gp, tglobaladdr:$in)>;
+
+
+//@ wrapper_pi
+class WrapperPat<SDNode node, Instruction ORiOp, RegisterClass RC>:
+      Pat<(HCPUWrapper RC:$gp, node:$in),
+              (ORiOp RC:$gp, node:$in)>;
+
+def : WrapperPat<tglobaladdr, ORi, GPROut>;

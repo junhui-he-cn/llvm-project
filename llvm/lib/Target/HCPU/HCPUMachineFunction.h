@@ -27,9 +27,14 @@ class HCPUFunctionInfo : public MachineFunctionInfo {
 public:
   HCPUFunctionInfo(const Function &F, const TargetSubtargetInfo *STI)
       : VarArgsFrameIndex(0), MaxCallFrameSize(0), EmitNOAT(false),
-        SRetReturnReg(0), CallsEhReturn(false), CallsEhDwarf(false) {}
+        SRetReturnReg(0), CallsEhReturn(false), CallsEhDwarf(false),
+        GlobalBaseReg(0) {}
 
   ~HCPUFunctionInfo();
+
+  bool globalBaseRegFixed() const;
+  bool globalBaseRegSet() const;
+  unsigned getGlobalBaseReg();
 
   int getVarArgsFrameInfo() const { return VarArgsFrameIndex; }
   void setVarArgsFrameIndex(int Index) { VarArgsFrameIndex = Index; }
@@ -90,6 +95,13 @@ private:
 
   /// Frame objects for spilling eh data registers.
   int EhDataRegFI[2];
+
+  /// GlobalBaseReg - keeps track of the virtual register initialized for
+  /// use as the global base register. This is used for PIC in some PIC
+  /// relocation models.
+  unsigned GlobalBaseReg;
+
+  int GPFI; // Index of the frame object for restoring $gp
 };
 } // namespace llvm
 

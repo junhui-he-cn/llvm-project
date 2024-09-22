@@ -27,9 +27,10 @@
 #define GET_SUBTARGETINFO_HEADER
 #include "HCPUGenSubtargetInfo.inc"
 
+extern bool HCPUReserveGP;
+extern bool HCPUNoCpload;
 namespace llvm {
 class StringRef;
-
 class HCPUTargetMachine;
 
 class HCPUSubtarget : public HCPUGenSubtargetInfo {
@@ -44,6 +45,7 @@ protected:
   bool EnableOverflow;
   bool HasCmp;
   bool HasSlt;
+  bool UseSmallSection;
 
   InstrItineraryData InstrItins;
 
@@ -82,6 +84,8 @@ public:
   bool disableOverflow() const { return !EnableOverflow; }
   bool hasCmp() const { return HasCmp; }
   bool hasSlt() const { return HasSlt; }
+  bool useSmallSection() const { return UseSmallSection; }
+
 
   bool abiUsesSoftFloat() const;
   bool enableLongBranchPass() const { return hasHCPU32II(); }

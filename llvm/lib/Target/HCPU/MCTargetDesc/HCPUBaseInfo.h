@@ -32,6 +32,11 @@ namespace HCPUII {
 
     MO_NO_FLAG,
 
+    /// MO_GOT16 - Represents the offset into the global offset table at which
+    /// the address the relocation entry symbol resides during execution.
+    MO_GOT16,
+    MO_GOT,
+
     /// MO_GOT_CALL - Represents the offset into the global offset table at
     /// which the address of a call site relocation entry symbol resides
     /// during execution. This is different from the above since this flag

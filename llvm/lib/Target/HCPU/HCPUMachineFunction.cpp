@@ -22,6 +22,19 @@ bool FixGlobalBaseReg;
 
 HCPUFunctionInfo::~HCPUFunctionInfo() {}
 
+bool HCPUFunctionInfo::globalBaseRegFixed() const {
+  return FixGlobalBaseReg;
+}
+
+bool HCPUFunctionInfo::globalBaseRegSet() const {
+  return GlobalBaseReg;
+}
+
+unsigned HCPUFunctionInfo::getGlobalBaseReg() {
+  return GlobalBaseReg = HCPU::GP;
+}
+
+
 void HCPUFunctionInfo::createEhDataRegsFI(MachineFunction &MF) { 
   const TargetRegisterInfo &TRI = *MF.getSubtarget().getRegisterInfo();
   for (int I = 0; I < 2; ++I) {

@@ -67,6 +67,8 @@ private:
   }
 
   virtual void processFunctionAfterISel(MachineFunction &MF) = 0;
+
+  SDNode *getGlobalBaseReg();
 };
 
 class HCPUDAGToDAGISelLegacy : public SelectionDAGISelLegacy {

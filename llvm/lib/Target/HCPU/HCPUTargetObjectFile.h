@@ -17,15 +17,27 @@
 
 namespace llvm {
 class HCPUTargetMachine;
-  class HCPUTargetObjectFile : public TargetLoweringObjectFileELF {
-    MCSection *SmallDataSection;
-    MCSection *SmallBSSSection;
-    const HCPUTargetMachine *TM;
+class HCPUTargetObjectFile : public TargetLoweringObjectFileELF {
+  MCSection *SmallDataSection;
+  MCSection *SmallBSSSection;
+  const HCPUTargetMachine *TM;
 
-  public:
-    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
-  };
-}
+  bool IsGlobalInSmallSection(const GlobalObject *GO, const TargetMachine &TM,
+                              SectionKind Kind) const;
+  bool IsGlobalInSmallSectionImpl(const GlobalObject *GO,
+                                  const TargetMachine &TM) const;
 
+public:
+  void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
+
+  /// IsGlobalInSmallSection - Return true if this global address should be
+  /// placed into small data/bss section.
+  bool IsGlobalInSmallSection(const GlobalObject *GV,
+                              const TargetMachine &TM) const;
+
+  MCSection *SelectSectionForGlobal(const GlobalObject *GO, SectionKind Kind,
+                                    const TargetMachine &TM) const override;
+};
+} // namespace llvm
 
 #endif

@@ -20,12 +20,14 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
+#include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -89,6 +91,8 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32 , Expand);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::Other , Expand);
 
+  setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
+
   setTargetDAGCombine(ISD::SDIVREM);
   setTargetDAGCombine(ISD::UDIVREM);
 }
@@ -108,6 +112,25 @@ HCPUTargetLowering::create(const HCPUTargetMachine &TM,
 //===----------------------------------------------------------------------===//
 
 #include "HCPUGenCallingConv.inc"
+
+SDValue HCPUTargetLowering::getGlobalReg(SelectionDAG &DAG, EVT Ty) const {
+  HCPUFunctionInfo *FI = DAG.getMachineFunction().getInfo<HCPUFunctionInfo>();
+  return DAG.getRegister(FI->getGlobalBaseReg(), Ty);
+}
+
+//@getTargetNode(GlobalAddressSDNode
+SDValue HCPUTargetLowering::getTargetNode(GlobalAddressSDNode *N, EVT Ty,
+                                          SelectionDAG &DAG,
+                                          unsigned Flag) const {
+  return DAG.getTargetGlobalAddress(N->getGlobal(), SDLoc(N), Ty, 0, Flag);
+}
+
+//@getTargetNode(ExternalSymbolSDNode
+SDValue HCPUTargetLowering::getTargetNode(ExternalSymbolSDNode *N, EVT Ty,
+                                          SelectionDAG &DAG,
+                                          unsigned Flag) const {
+  return DAG.getTargetExternalSymbol(N->getSymbol(), Ty, Flag);
+}
 
 //===----------------------------------------------------------------------===//
 //@            Formal Arguments Calling Convention Implementation
@@ -291,4 +314,59 @@ SDValue HCPUTargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
   }
 
   return SDValue();
+}
+
+SDValue HCPUTargetLowering::
+LowerOperation(SDValue Op, SelectionDAG &DAG) const
+{
+  switch (Op.getOpcode())
+  {
+  case ISD::GlobalAddress:      return LowerGlobalAddress(Op, DAG);
+  }
+  return SDValue();
+}
+
+
+SDValue HCPUTargetLowering::LowerGlobalAddress(SDValue Op,
+                                               SelectionDAG &DAG) const {
+  //@lowerGlobalAddress }
+  SDLoc DL(Op);
+  const HCPUTargetObjectFile *TLOF =
+        static_cast<const HCPUTargetObjectFile *>(
+            getTargetMachine().getObjFileLowering());
+  //@lga 1 {
+  EVT Ty = Op.getValueType();
+  GlobalAddressSDNode *N = cast<GlobalAddressSDNode>(Op);
+  const GlobalValue *GV = N->getGlobal();
+  //@lga 1 }
+
+  if (!isPositionIndependent()) {
+    //@ %gp_rel relocation
+    const GlobalObject *GO = GV->getAliaseeObject();
+    if (GO && TLOF->IsGlobalInSmallSection(GO, getTargetMachine())) {
+      SDValue GA = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
+                                              HCPUII::MO_GPREL);
+      SDValue GPRelNode = DAG.getNode(HCPUISD::GPRel, DL,
+                                      DAG.getVTList(MVT::i32), GA);
+      SDValue GPReg = DAG.getRegister(HCPU::GP, MVT::i32);
+      return DAG.getNode(ISD::ADD, DL, MVT::i32, GPReg, GPRelNode);
+    }
+
+    //@ %hi/%lo relocation
+    return getAddrNonPIC(N, Ty, DAG);
+  }
+
+  if (GV->hasInternalLinkage() || (GV->hasLocalLinkage() && !isa<Function>(GV)))
+    return getAddrLocal(N, Ty, DAG);
+
+  //@large section
+  const GlobalObject *GO = GV->getAliaseeObject();
+  if (GO && !TLOF->IsGlobalInSmallSection(GO, getTargetMachine()))
+    return getAddrGlobalLargeGOT(
+        N, Ty, DAG, HCPUII::MO_GOT_HI16, HCPUII::MO_GOT_LO16, 
+        DAG.getEntryNode(), 
+        MachinePointerInfo::getGOT(DAG.getMachineFunction()));
+  return getAddrGlobal(
+      N, Ty, DAG, HCPUII::MO_GOT, DAG.getEntryNode(), 
+      MachinePointerInfo::getGOT(DAG.getMachineFunction()));
 }

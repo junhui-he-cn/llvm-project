@@ -97,15 +97,14 @@ void HCPUMCCodeEmitter::encodeInstruction(const MCInst &MI,
 unsigned HCPUMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
                                            SmallVectorImpl<MCFixup> &Fixups,
                                            const MCSubtargetInfo &STI) const {
-  //@getExprOpValue body {
+//@getExprOpValue body {
   MCExpr::ExprKind Kind = Expr->getKind();
   if (Kind == MCExpr::Constant) {
     return cast<MCConstantExpr>(Expr)->getValue();
   }
 
   if (Kind == MCExpr::Binary) {
-    unsigned Res =
-        getExprOpValue(cast<MCBinaryExpr>(Expr)->getLHS(), Fixups, STI);
+    unsigned Res = getExprOpValue(cast<MCBinaryExpr>(Expr)->getLHS(), Fixups, STI);
     Res += getExprOpValue(cast<MCBinaryExpr>(Expr)->getRHS(), Fixups, STI);
     return Res;
   }
@@ -115,8 +114,28 @@ unsigned HCPUMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
 
     HCPU::Fixups FixupKind = HCPU::Fixups(0);
     switch (HCPUExpr->getKind()) {
-    default:
-      llvm_unreachable("Unsupported fixup kind for target expression!");
+    default: llvm_unreachable("Unsupported fixup kind for target expression!");
+  //@switch {
+//    switch(cast<MCSymbolRefExpr>(Expr)->getKind()) {
+  //@switch }
+    case HCPUMCExpr::CEK_GPREL:
+      FixupKind = HCPU::fixup_HCPU_GPREL16;
+      break;
+    case HCPUMCExpr::CEK_GOT:
+      FixupKind = HCPU::fixup_HCPU_GOT;
+      break;
+    case HCPUMCExpr::CEK_ABS_HI:
+      FixupKind = HCPU::fixup_HCPU_HI16;
+      break;
+    case HCPUMCExpr::CEK_ABS_LO:
+      FixupKind = HCPU::fixup_HCPU_LO16;
+      break;
+    case HCPUMCExpr::CEK_GOT_HI16:
+      FixupKind = HCPU::fixup_HCPU_GOT_HI16;
+      break;
+    case HCPUMCExpr::CEK_GOT_LO16:
+      FixupKind = HCPU::fixup_HCPU_GOT_LO16;
+      break;
     } // switch
     Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(FixupKind)));
     return 0;

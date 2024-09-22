@@ -29,10 +29,25 @@
 
 using namespace llvm;
 
-static cl::opt<bool> EnableOverflowOpt
-                ("cpu0-enable-overflow", cl::Hidden, cl::init(false),
-                 cl::desc("Use trigger overflow instructions add and sub \
+static cl::opt<bool>
+    EnableOverflowOpt("hcpu-enable-overflow", cl::Hidden, cl::init(false),
+                      cl::desc("Use trigger overflow instructions add and sub \
                  instead of non-overflow instructions addu and subu"));
+
+static cl::opt<bool> UseSmallSectionOpt(
+    "hcpu-use-small-section", cl::Hidden, cl::init(false),
+    cl::desc("Use small section. Only work when -relocation-model="
+             "static. pic always not use small section."));
+
+static cl::opt<bool> ReserveGPOpt("hcpu-reserve-gp", cl::Hidden,
+                                  cl::init(false),
+                                  cl::desc("Never allocate $gp to variable"));
+
+static cl::opt<bool> NoCploadOpt("hcpu-no-cpload", cl::Hidden, cl::init(false),
+                                 cl::desc("No issue .cpload"));
+
+bool HCPUReserveGP;
+bool HCPUNoCpload;
 
 #define DEBUG_TYPE "hcpu-subtarget"
 
@@ -52,7 +67,16 @@ HCPUSubtarget::HCPUSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
           HCPUInstrInfo::create(initializeSubtargetDependencies(CPU, FS, TM))),
       FrameLowering(HCPUFrameLowering::create(*this)),
       TLInfo(HCPUSETargetLowering::create(TM, *this)) {
-    EnableOverflow = EnableOverflowOpt;
+  EnableOverflow = EnableOverflowOpt;
+  UseSmallSection = UseSmallSectionOpt;
+  HCPUReserveGP = ReserveGPOpt;
+  HCPUNoCpload = NoCploadOpt;
+#ifdef ENABLE_GPRESTORE
+  if (!TM.isPositionIndependent() && !UseSmallSection && !Cpu0ReserveGP)
+    FixGlobalBaseReg = false;
+  else
+#endif
+    FixGlobalBaseReg = true;
 }
 
 bool HCPUSubtarget::isPositionIndependent() const {
@@ -89,7 +113,7 @@ HCPUSubtarget::initializeSubtargetDependencies(StringRef CPU, StringRef FS,
     HasCmp = false;
     HasSlt = true;
   } else {
-    errs() << "-mcpu must be empty(default:cpu032II), cpu032I or cpu032II"
+    errs() << "-mcpu must be empty(default:HCPU32II), HCPU32I or HCPU32II"
            << "\n";
   }
 

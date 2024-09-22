@@ -62,6 +62,14 @@ BitVector HCPURegisterInfo::getReservedRegs(const MachineFunction &MF) const {
                                              HCPU::LR, /*HCPU::SW,*/ HCPU::PC};
   BitVector Reserved(getNumRegs());
 
+  Reserved.set(HCPU::GP);
+#ifdef ENABLE_GPRESTORE //1
+  const HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
+  // Reserve GP if globalBaseRegFixed()
+  if (HCPUFI->globalBaseRegFixed())
+#endif
+    Reserved.set(HCPU::GP);
+    
   for (unsigned I = 0;
        I < (sizeof(ReservedCPURegs) / sizeof(ReservedCPURegs[0])); ++I)
     Reserved.set(ReservedCPURegs[I]);

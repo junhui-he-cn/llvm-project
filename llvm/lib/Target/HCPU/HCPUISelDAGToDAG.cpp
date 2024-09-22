@@ -70,13 +70,13 @@ bool HCPUDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
 /// Used on HCPU Load/Store instructions
 bool HCPUDAGToDAGISel::SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base,
                                   SDValue &Offset) {
-  //@SelectAddr }
+//@SelectAddr }
   EVT ValTy = Addr.getValueType();
   SDLoc DL(Addr);
 
   // If Parent is an unaligned f32 load or store, select a (base + index)
   // floating point load/store instruction (luxc1 or suxc1).
-  const LSBaseSDNode *LS = 0;
+  const LSBaseSDNode* LS = 0;
 
   if (Parent && (LS = dyn_cast<LSBaseSDNode>(Parent))) {
     EVT VT = LS->getMemoryVT();
@@ -90,12 +90,26 @@ bool HCPUDAGToDAGISel::SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base,
 
   // if Address is FI, get the TargetFrameIndex.
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
-    Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), ValTy);
+    Base   = CurDAG->getTargetFrameIndex(FIN->getIndex(), ValTy);
     Offset = CurDAG->getTargetConstant(0, DL, ValTy);
     return true;
   }
 
-  Base = Addr;
+  // on PIC code Load GA
+  if (Addr.getOpcode() == HCPUISD::Wrapper) {
+    Base   = Addr.getOperand(0);
+    Offset = Addr.getOperand(1);
+    return true;
+  }
+
+  //@static
+  if (TM.getRelocationModel() != Reloc::PIC_) {
+    if ((Addr.getOpcode() == ISD::TargetExternalSymbol ||
+        Addr.getOpcode() == ISD::TargetGlobalAddress))
+      return false;
+  }
+
+  Base   = Addr;
   Offset = CurDAG->getTargetConstant(0, DL, ValTy);
   return true;
 }
@@ -121,10 +135,23 @@ void HCPUDAGToDAGISel::Select(SDNode *Node) {
   switch (Opcode) {
   default:
     break;
+    // Get target GOT address.
+  case ISD::GLOBAL_OFFSET_TABLE:
+    ReplaceNode(Node, getGlobalBaseReg());
+    return;
   }
 
   // Select the default instruction
   SelectCode(Node);
+}
+
+/// getGlobalBaseReg - Output the instructions required to put the
+/// GOT address into a register.
+SDNode *HCPUDAGToDAGISel::getGlobalBaseReg() {
+  unsigned GlobalBaseReg = MF->getInfo<HCPUFunctionInfo>()->getGlobalBaseReg();
+  return CurDAG->getRegister(GlobalBaseReg, getTargetLowering()->getPointerTy(
+                                                CurDAG->getDataLayout()))
+      .getNode();
 }
 
 char HCPUDAGToDAGISelLegacy::ID = 0;
