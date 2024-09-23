@@ -847,3 +847,55 @@ def : Pat<(HCPUJmpLink (i32 tglobaladdr:$dst)),
 def : Pat<(HCPUJmpLink (i32 texternalsym:$dst)),
           (JSUB texternalsym:$dst)>;
 
+def SDT_HCPUCallSeqStart : SDCallSeqStart<[SDTCisVT<0, i32>]>;
+def SDT_HCPUCallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
+
+// These are target-independent nodes, but have target-specific formats.
+def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_HCPUCallSeqStart,
+                           [SDNPHasChain, SDNPOutGlue]>;
+def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_HCPUCallSeqEnd,
+                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+
+// As stack alignment is always done with addiu, we need a 16-bit immediate
+let Defs = [SP], Uses = [SP] in {
+def ADJCALLSTACKDOWN : HCPUPseudo<(outs), (ins uimm16:$amt1, uimm16:$amt2),
+                                  "!ADJCALLSTACKDOWN $amt1",
+                                  [(callseq_start timm:$amt1, timm:$amt2)]>;
+def ADJCALLSTACKUP   : HCPUPseudo<(outs), (ins uimm16:$amt1, uimm16:$amt2),
+                                  "!ADJCALLSTACKUP $amt1",
+                                  [(callseq_end timm:$amt1, timm:$amt2)]>;
+}
+
+//@def CPRESTORE {
+// When handling PIC code the assembler needs .cpload and .cprestore
+// directives. If the real instructions corresponding these directives
+// are used, we have the same behavior, but get also a bunch of warnings
+// from the assembler.
+let hasSideEffects = 0 in
+def CPRESTORE : HCPUPseudo<(outs), (ins i32imm:$loc, CPURegs:$gp),
+                           ".cprestore\t$loc", []>;
+
+// Tail call
+def HCPUTailCall : SDNode<"HCPUISD::TailCall", SDT_HCPUJmpLink,
+                          [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1, hasDelaySlot = 1,
+    hasExtraSrcRegAllocReq = 1, Defs = [AT] in {
+  class TailCall<Instruction JumpInst> :
+    PseudoSE<(outs), (ins calltarget:$target), [], IIBranch>,
+    PseudoInstExpansion<(JumpInst jmptarget:$target)>;
+
+  class TailCallReg<RegisterClass RO, Instruction JRInst,
+                    RegisterClass ResRO = RO> :
+    PseudoSE<(outs), (ins RO:$rs), [(HCPUTailCall RO:$rs)], IIBranch>,
+    PseudoInstExpansion<(JRInst ResRO:$rs)>;
+}
+
+def TAILCALL : TailCall<JMP>;
+def TAILCALL_R : TailCallReg<GPROut, JR>;
+
+
+def : Pat<(HCPUTailCall (iPTR tglobaladdr:$dst)),
+              (TAILCALL tglobaladdr:$dst)>;
+def : Pat<(HCPUTailCall (iPTR texternalsym:$dst)),
+              (TAILCALL texternalsym:$dst)>;

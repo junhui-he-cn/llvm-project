@@ -70,6 +70,9 @@ public:
   void emitStartOfAsmFile(Module &M) override;
   void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
   bool isLongBranchPseudo(int Opcode) const;
+
+    // tblgen'erated function.
+  bool lowerPseudoInstExpansion(const MachineInstr *MI, MCInst &Inst);
 };
 }
 

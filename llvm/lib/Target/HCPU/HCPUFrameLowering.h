@@ -32,6 +32,10 @@ public:
   static const HCPUFrameLowering *create(const HCPUSubtarget &ST);
 
   bool hasFP(const MachineFunction &MF) const override;
+
+  MachineBasicBlock::iterator
+  eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator I) const override;
 };
 
 const HCPUFrameLowering *createHCPUSEFrameLowering(const HCPUSubtarget &ST);

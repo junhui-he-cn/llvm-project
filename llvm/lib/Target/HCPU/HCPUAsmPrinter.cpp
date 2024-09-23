@@ -43,10 +43,17 @@ using namespace llvm;
 
 #define DEBUG_TYPE "hcpu-asm-printer"
 
+#include "HCPUGenMCPseudoLowering.inc"
+
 bool HCPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   HCPUFI = MF.getInfo<HCPUFunctionInfo>();
   AsmPrinter::runOnMachineFunction(MF);
   return true;
+}
+
+bool HCPUAsmPrinter::lowerOperand(const MachineOperand &MO, MCOperand &MCOp) {
+  MCOp = MCInstLowering.LowerOperand(MO);
+  return MCOp.isValid();
 }
 
 //@EmitInstruction {
@@ -67,8 +74,14 @@ void HCPUAsmPrinter::emitInstruction(const MachineInstr *MI) {
   MachineBasicBlock::const_instr_iterator E = MI->getParent()->instr_end();
 
   do {
+    // Do any auto-generated pseudo lowerings.
+    if (MCInst OutInst; lowerPseudoInstExpansion(&*I, OutInst)) {
+      EmitToStreamer(*OutStreamer, OutInst);
+      continue;
+    }
 
-    if (I->isPseudo() && !isLongBranchPseudo(I->getOpcode()) )
+
+    if (I->isPseudo() && !isLongBranchPseudo(I->getOpcode()))
       llvm_unreachable("Pseudo opcode found in emitInstruction()");
 
     MCInst TmpInst0;
@@ -209,8 +222,7 @@ void HCPUAsmPrinter::emitFunctionBodyStart() {
 
   emitFrameDirective();
   bool EmitCPLoad = (MF->getTarget().getRelocationModel() == Reloc::PIC_) &&
-    HCPUFI->globalBaseRegSet() &&
-    HCPUFI->globalBaseRegFixed();
+                    HCPUFI->globalBaseRegSet() && HCPUFI->globalBaseRegFixed();
   if (HCPUNoCpload)
     EmitCPLoad = false;
 
@@ -230,7 +242,7 @@ void HCPUAsmPrinter::emitFunctionBodyStart() {
     SmallVector<MCInst, 4> MCInsts;
     MCInstLowering.LowerCPLOAD(MCInsts);
     for (SmallVector<MCInst, 4>::iterator I = MCInsts.begin();
-       I != MCInsts.end(); ++I)
+         I != MCInsts.end(); ++I)
       OutStreamer->emitInstruction(*I, getSubtargetInfo());
   }
 }
@@ -275,8 +287,7 @@ void HCPUAsmPrinter::PrintDebugValueComment(const MachineInstr *MI,
 }
 
 bool HCPUAsmPrinter::isLongBranchPseudo(int Opcode) const {
-  return (Opcode == HCPU::LONG_BRANCH_LUi
-          || Opcode == HCPU::LONG_BRANCH_ADDiu);
+  return (Opcode == HCPU::LONG_BRANCH_LUi || Opcode == HCPU::LONG_BRANCH_ADDiu);
 }
 
 // Force static initialization.

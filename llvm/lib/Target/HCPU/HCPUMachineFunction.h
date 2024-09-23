@@ -29,7 +29,8 @@ public:
       : VarArgsFrameIndex(0), MaxCallFrameSize(0), EmitNOAT(false),
         SRetReturnReg(0), CallsEhReturn(false), CallsEhDwarf(false),
         GlobalBaseReg(0), GPFI(0),
-        InArgFIRange(std::make_pair(-1, 0)), OutArgFIRange(std::make_pair(-1, 0)), DynAllocFI(0) {}
+        InArgFIRange(std::make_pair(-1, 0)), OutArgFIRange(std::make_pair(-1, 0)), DynAllocFI(0) {
+        }
 
   ~HCPUFunctionInfo();
 
@@ -79,10 +80,16 @@ public:
   unsigned getMaxCallFrameSize() const { return MaxCallFrameSize; }
   void setMaxCallFrameSize(unsigned S) { MaxCallFrameSize = S; }
 
+  /// Create a MachinePointerInfo that has an ExternalSymbolPseudoSourceValue
+  /// object representing a GOT entry for an external function.
+  MachinePointerInfo callPtrInfo(MachineFunction &MF, const char *ES);
+
+  /// Create a MachinePointerInfo that has a GlobalValuePseudoSourceValue object
+  /// representing a GOT entry for a global function.
+  MachinePointerInfo callPtrInfo(MachineFunction &MF, const GlobalValue *GV);
+
 private:
   virtual void anchor();
-
-  // MachineFunction &MF;
 
   /// VarArgsFrameIndex - FrameIndex for start of varargs area.
   int VarArgsFrameIndex;

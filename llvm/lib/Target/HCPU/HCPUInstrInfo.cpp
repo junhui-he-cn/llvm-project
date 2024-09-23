@@ -16,8 +16,8 @@
 #include "HCPUMachineFunction.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
 
@@ -26,14 +26,16 @@ using namespace llvm;
 
 void HCPUInstrInfo::anchor() {}
 
-HCPUInstrInfo::HCPUInstrInfo(const HCPUSubtarget &STI) : Subtarget(STI) {}
+HCPUInstrInfo::HCPUInstrInfo(const HCPUSubtarget &STI)
+    : Subtarget(STI),
+      HCPUGenInstrInfo(HCPU::ADJCALLSTACKDOWN, HCPU::ADJCALLSTACKUP) {}
 
 const HCPUInstrInfo *HCPUInstrInfo::create(HCPUSubtarget &STI) {
   return createHCPUSEInstrInfo(STI);
 }
 
 unsigned HCPUInstrInfo::GetInstSizeInBytes(const MachineInstr &MI) const {
-  switch(MI.getOpcode()) {
+  switch (MI.getOpcode()) {
   default:
     return MI.getDesc().getSize();
   }

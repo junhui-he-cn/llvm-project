@@ -149,6 +149,15 @@ protected:
                        DAG.getNode(HCPUISD::Lo, DL, Ty, Lo));
   }
 
+  /// This function fills Ops, which is the list of operands that will later
+  /// be used when a function call node is created. It also generates
+  /// copyToReg nodes to set up argument registers.
+  virtual void getOpndList(SmallVectorImpl<SDValue> &Ops,
+                           std::deque<std::pair<unsigned, SDValue>> &RegsToPass,
+                           bool IsPICCall, bool GlobalOrExternal,
+                           bool InternalLinkage, CallLoweringInfo &CLI,
+                           SDValue Callee, SDValue Chain) const;
+
   /// ByValArgInfo - Byval argument information.
   struct ByValArgInfo {
     unsigned FirstIdx; // Index of the first register used.
@@ -210,6 +219,11 @@ protected:
     llvm::CCAssignFn *fixedArgFn() const;
     void allocateRegs(ByValArgInfo &ByVal, unsigned ByValSize, unsigned Align);
 
+    void analyzeCallOperands(const SmallVectorImpl<ISD::OutputArg> &Outs,
+                             bool IsVarArg, bool IsSoftFloat,
+                             const SDNode *CallNode,
+                             std::vector<ArgListEntry> &FuncArgs);
+
   private:
     /// Return the type of the register which is used to pass an argument or
     /// return a value. This function returns f64 if the argument is an i64
@@ -269,6 +283,29 @@ private:
                       SelectionDAG &DAG) const override;
 
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
+
+  HCPUCC::SpecialCallingConvType getSpecialCallingConv(SDValue Callee) const;
+  // Lower Operand helpers
+  SDValue LowerCallResult(SDValue Chain, SDValue InFlag,
+                          CallingConv::ID CallConv, bool isVarArg,
+                          const SmallVectorImpl<ISD::InputArg> &Ins,
+                          const SDLoc &dl, SelectionDAG &DAG,
+                          SmallVectorImpl<SDValue> &InVals,
+                          const SDNode *CallNode, const Type *RetTy) const;
+  /// passByValArg - Pass a byval argument in registers or on stack.
+  void passByValArg(SDValue Chain, const SDLoc &DL,
+                    std::deque<std::pair<unsigned, SDValue>> &RegsToPass,
+                    SmallVectorImpl<SDValue> &MemOpChains, SDValue StackPtr,
+                    MachineFrameInfo &MFI, SelectionDAG &DAG, SDValue Arg,
+                    const HCPUCC &CC, const ByValArgInfo &ByVal,
+                    const ISD::ArgFlagsTy &Flags, bool isLittle) const;
+  SDValue passArgOnStack(SDValue StackPtr, unsigned Offset, SDValue Chain,
+                         SDValue Arg, const SDLoc &DL, bool IsTailCall,
+                         SelectionDAG &DAG) const;
+  bool CanLowerReturn(CallingConv::ID CallConv, MachineFunction &MF,
+                      bool isVarArg,
+                      const SmallVectorImpl<ISD::OutputArg> &Outs,
+                      LLVMContext &Context) const override;
 };
 const HCPUTargetLowering *
 createHCPUSETargetLowering(const HCPUTargetMachine &TM,

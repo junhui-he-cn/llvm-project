@@ -11,10 +11,10 @@
 
 #include "HCPUInstrInfo.h"
 #include "HCPUSubtarget.h"
-#include "llvm/IR/Function.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-
+#include "llvm/CodeGen/PseudoSourceValueManager.h"
+#include "llvm/IR/Function.h"
 
 using namespace llvm;
 
@@ -22,20 +22,15 @@ bool FixGlobalBaseReg;
 
 HCPUFunctionInfo::~HCPUFunctionInfo() {}
 
-bool HCPUFunctionInfo::globalBaseRegFixed() const {
-  return FixGlobalBaseReg;
-}
+bool HCPUFunctionInfo::globalBaseRegFixed() const { return FixGlobalBaseReg; }
 
-bool HCPUFunctionInfo::globalBaseRegSet() const {
-  return GlobalBaseReg;
-}
+bool HCPUFunctionInfo::globalBaseRegSet() const { return GlobalBaseReg; }
 
 unsigned HCPUFunctionInfo::getGlobalBaseReg() {
   return GlobalBaseReg = HCPU::GP;
 }
 
-
-void HCPUFunctionInfo::createEhDataRegsFI(MachineFunction &MF) { 
+void HCPUFunctionInfo::createEhDataRegsFI(MachineFunction &MF) {
   const TargetRegisterInfo &TRI = *MF.getSubtarget().getRegisterInfo();
   for (int I = 0; I < 2; ++I) {
     const TargetRegisterClass &RC = HCPU::CPURegsRegClass;
@@ -46,3 +41,13 @@ void HCPUFunctionInfo::createEhDataRegsFI(MachineFunction &MF) {
 }
 
 void HCPUFunctionInfo::anchor() {};
+
+MachinePointerInfo HCPUFunctionInfo::callPtrInfo(MachineFunction &MF,
+                                                 const char *ES) {
+  return MachinePointerInfo(MF.getPSVManager().getExternalSymbolCallEntry(ES));
+}
+
+MachinePointerInfo HCPUFunctionInfo::callPtrInfo(MachineFunction &MF,
+                                                 const GlobalValue *GV) {
+  return MachinePointerInfo(MF.getPSVManager().getGlobalValueCallEntry(GV));
+}

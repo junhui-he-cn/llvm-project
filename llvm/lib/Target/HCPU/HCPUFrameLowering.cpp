@@ -90,7 +90,6 @@ const HCPUFrameLowering *HCPUFrameLowering::create(const HCPUSubtarget &ST) {
 // pointer register.  This is true if the function has variable sized allocas,
 // if it needs dynamic stack realignment, if frame pointer elimination is
 // disabled, or if the frame address is taken.
-
 bool HCPUFrameLowering::hasFP(const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
   const TargetRegisterInfo *TRI = STI.getRegisterInfo();
@@ -98,4 +97,12 @@ bool HCPUFrameLowering::hasFP(const MachineFunction &MF) const {
   return MF.getTarget().Options.DisableFramePointerElim(MF) ||
           MFI.hasVarSizedObjects() || MFI.isFrameAddressTaken() ||
           TRI->hasStackRealignment(MF);
+}
+
+// Eliminate ADJCALLSTACKDOWN, ADJCALLSTACKUP pseudo instructions
+MachineBasicBlock::iterator HCPUFrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator I) const {
+
+  return MBB.erase(I);
 }
