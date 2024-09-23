@@ -794,3 +794,56 @@ def BAL: FJ<0x3A, (outs), (ins jmptarget:$addr), "bal\t$addr", [], IIBranch>,
              Requires<[HasSlt]>;
 
 include "HCPUCondMov.td"
+
+
+def SDT_HCPUJmpLink      : SDTypeProfile<0, 1, [SDTCisVT<0, iPTR>]>;
+
+// Call
+def HCPUJmpLink : SDNode<"HCPUISD::JmpLink",SDT_HCPUJmpLink,
+                         [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
+                          SDNPVariadic]>;
+
+class IsTailCall {
+  bit isCall = 1;
+  bit isTerminator = 1;
+  bit isReturn = 1;
+  bit isBarrier = 1;
+  bit hasExtraSrcRegAllocReq = 1;
+  bit isCodeGenOnly = 1;
+}
+
+def calltarget  : Operand<iPTR> {
+  let EncoderMethod = "getJumpTargetOpValue";
+  let OperandType = "OPERAND_PCREL";
+}
+
+// Jump and Link (Call)
+let isCall=1, hasDelaySlot=1 in {
+  class JumpLink<bits<8> op, string instr_asm>:
+    FJ<op, (outs), (ins calltarget:$addr, variable_ops),
+       !strconcat(instr_asm, "\t$addr"), [(HCPUJmpLink imm:$addr)],
+       IIBranch> {
+      let DecoderMethod = "DecodeJumpTarget";
+  }
+
+
+  class JumpLinkReg<bits<8> op, string instr_asm,
+                    RegisterClass RC>:
+    FA<op, (outs), (ins RC:$rb, variable_ops),
+       !strconcat(instr_asm, "\t$rb"), [(HCPUJmpLink RC:$rb)], IIBranch> {
+    let rc = 0;
+    let ra = 14;
+    let shamt = 0;
+  }
+}
+
+/// Jump & link and Return Instructions
+def JSUB    : JumpLink<0x3b, "jsub">;
+
+def JALR    : JumpLinkReg<0x39, "jalr", GPROut>;
+
+def : Pat<(HCPUJmpLink (i32 tglobaladdr:$dst)),
+          (JSUB tglobaladdr:$dst)>;
+def : Pat<(HCPUJmpLink (i32 texternalsym:$dst)),
+          (JSUB texternalsym:$dst)>;
+

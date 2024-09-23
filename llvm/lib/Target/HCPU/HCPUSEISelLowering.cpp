@@ -53,3 +53,21 @@ llvm::createHCPUSETargetLowering(const HCPUTargetMachine &TM,
                            const HCPUSubtarget &STI) {
   return new HCPUSETargetLowering(TM, STI);
 }
+
+
+bool HCPUSETargetLowering::
+isEligibleForTailCallOptimization(const HCPUCC &HCPUCCInfo,
+                                  unsigned NextStackOffset,
+                                  const HCPUFunctionInfo& FI) const {
+  if (!EnableHCPUTailCalls)
+    return false;
+
+  // Return false if either the callee or caller has a byval argument.
+  if (HCPUCCInfo.hasByValArg() || FI.hasByvalArg())
+    return false;
+
+  // Return true if the callee's argument area is no larger than the
+  // caller's.
+  return NextStackOffset <= FI.getIncomingArgSize();
+}
+

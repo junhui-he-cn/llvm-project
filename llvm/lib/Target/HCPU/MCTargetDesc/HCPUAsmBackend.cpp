@@ -46,10 +46,20 @@ static unsigned adjustFixupValue(const MCFixup &Fixup, uint64_t Value,
     return 0;
   case FK_GPRel_4:
   case FK_Data_4:
+  case HCPU::fixup_HCPU_CALL16:
   case HCPU::fixup_HCPU_LO16:
+  case HCPU::fixup_HCPU_GOT_LO16:
+    break;
+  case HCPU::fixup_HCPU_PC16:
+  case HCPU::fixup_HCPU_PC24:
+    // So far we are only using this type for branches and jump.
+    // For branches we start 1 instruction after the branch
+    // so the displacement will be one instruction size less.
+    Value -= 4;
     break;
   case HCPU::fixup_HCPU_HI16:
   case HCPU::fixup_HCPU_GOT:
+  case HCPU::fixup_HCPU_GOT_HI16:
     // Get the higher 16-bits. Also add 1 if bit 15 is 1.
     Value = (Value >> 16) & 0xffff;
     break;

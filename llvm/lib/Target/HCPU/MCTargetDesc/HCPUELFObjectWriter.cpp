@@ -75,6 +75,9 @@ unsigned HCPUELFObjectWriter::getRelocType(MCContext &Ctx,
   case HCPU::fixup_HCPU_GOT_LO16:
     Type = ELF::R_HCPU_GOT_LO16;
     break;
+    case HCPU::fixup_HCPU_CALL16:
+    Type = ELF::R_HCPU_CALL16;
+    break;
   }
 
   return Type;

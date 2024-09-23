@@ -61,6 +61,7 @@ MCOperand HCPUMCInstLower::LowerOperand(const MachineOperand &MO,
   case MachineOperand::MO_RegisterMask:
     break;
   case MachineOperand::MO_GlobalAddress:
+  case MachineOperand::MO_ExternalSymbol:
     return LowerSymbolOperand(MO, MOTy, offset);
   }
 
@@ -141,6 +142,9 @@ MCOperand HCPUMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
   case HCPUII::MO_GOT_LO16:
     TargetKind = HCPUMCExpr::CEK_GOT_LO16;
     break;
+  case HCPUII::MO_GOT_CALL:
+    TargetKind = HCPUMCExpr::CEK_GOT_CALL;
+    break;
   }
 
   switch (MOTy) {
@@ -148,7 +152,10 @@ MCOperand HCPUMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
     Symbol = AsmPrinter.getSymbol(MO.getGlobal());
     Offset += MO.getOffset();
     break;
-
+  case MachineOperand::MO_ExternalSymbol:
+    Symbol = AsmPrinter.GetExternalSymbolSymbol(MO.getSymbolName());
+    Offset += MO.getOffset();
+    break;
   default:
     llvm_unreachable("<unknown operand type>");
   }

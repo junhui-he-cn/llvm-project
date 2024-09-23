@@ -25,6 +25,10 @@ public:
                                 const HCPUSubtarget &STI);
 
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+
+  bool isEligibleForTailCallOptimization(const HCPUCC &HCPUCCInfo,
+                                     unsigned NextStackOffset,
+                                     const HCPUFunctionInfo& FI) const override;
 };
 } // namespace llvm
 
