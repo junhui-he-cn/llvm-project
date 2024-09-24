@@ -103,6 +103,15 @@ bool HCPUFrameLowering::hasFP(const MachineFunction &MF) const {
 MachineBasicBlock::iterator HCPUFrameLowering::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
+  unsigned SP = HCPU::SP;
+
+  if (!hasReservedCallFrame(MF)) {
+    int64_t Amount = I->getOperand(0).getImm();
+    if (I->getOpcode() == HCPU::ADJCALLSTACKDOWN)
+      Amount = -Amount;
+
+    STI.getInstrInfo()->adjustStackPtr(SP, Amount, MBB, I);
+  }
 
   return MBB.erase(I);
 }

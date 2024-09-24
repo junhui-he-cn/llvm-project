@@ -68,8 +68,12 @@ BitVector HCPURegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   // Reserve GP if globalBaseRegFixed()
   if (HCPUFI->globalBaseRegFixed())
 #endif
-    Reserved.set(HCPU::GP);
     
+    // Reserve FP if this function should have a dedicated frame pointer register.
+  if (MF.getSubtarget().getFrameLowering()->hasFP(MF)) {
+    Reserved.set(HCPU::FP);
+  }
+
   for (unsigned I = 0;
        I < (sizeof(ReservedCPURegs) / sizeof(ReservedCPURegs[0])); ++I)
     Reserved.set(ReservedCPURegs[I]);
@@ -135,6 +139,12 @@ bool HCPURegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   //   by adding the size of the stack:
   //   incoming argument, callee-saved register location or local variable.
   int64_t Offset;
+#ifdef ENABLE_GPRESTORE //2
+  if (HCPUFI->isOutArgFI(FrameIndex) || HCPUFI->isGPFI(FrameIndex) ||
+      HCPUFI->isDynAllocFI(FrameIndex))
+    Offset = spOffset;
+  else
+#endif
   Offset = spOffset + (int64_t)stackSize;
 
   Offset += MI.getOperand(i + 1).getImm();

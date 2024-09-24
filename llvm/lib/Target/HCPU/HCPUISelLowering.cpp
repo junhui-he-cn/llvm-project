@@ -115,6 +115,25 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
   setOperationAction(ISD::SELECT_CC, MVT::i32, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::Other, Expand);
 
+  setOperationAction(ISD::VASTART, MVT::Other, Custom);
+  // Support va_arg(): variable numbers (not fixed numbers) of arguments
+  //  (parameters) for function all
+  setOperationAction(ISD::VAARG, MVT::Other, Expand);
+  setOperationAction(ISD::VACOPY, MVT::Other, Expand);
+  setOperationAction(ISD::VAEND, MVT::Other, Expand);
+
+  //@llvm.stacksave
+  // Use the default for now
+  setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
+  setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
+
+  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32, Expand);
+
+  setStackPointerRegisterToSaveRestore(HCPU::SP);
+
+  setOperationAction(ISD::EH_RETURN, MVT::Other, Custom);
+  setOperationAction(ISD::ADD, MVT::i32, Custom);
+
   setTargetDAGCombine(ISD::SDIVREM);
   setTargetDAGCombine(ISD::UDIVREM);
 }
@@ -172,10 +191,9 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
 
   // Assign locations to all of the incoming arguments.
   SmallVector<CCValAssign, 16> ArgLocs;
-  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(),
-                 ArgLocs, *DAG.getContext());
-  HCPUCC HCPUCCInfo(CallConv, ABI.IsO32(), 
-                    CCInfo);
+  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), ArgLocs,
+                 *DAG.getContext());
+  HCPUCC HCPUCCInfo(CallConv, ABI.IsO32(), CCInfo);
 
   const Function &Func = DAG.getMachineFunction().getFunction();
   Function::const_arg_iterator FuncArg = Func.arg_begin();
@@ -183,8 +201,7 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
   bool UseSoftFloat = Subtarget.abiUsesSoftFloat();
 
   HCPUCCInfo.analyzeFormalArguments(Ins, UseSoftFloat, FuncArg);
-  HCPUFI->setFormalArgInfo(CCInfo.getStackSize(),
-                           HCPUCCInfo.hasByValArg());
+  HCPUFI->setFormalArgInfo(CCInfo.getStackSize(), HCPUCCInfo.hasByValArg());
 
   // Used with vargs to acumulate store chains.
   std::vector<SDValue> OutChains;
@@ -194,7 +211,7 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
 
   //@2 {
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
-  //@2 }
+    //@2 }
     CCValAssign &VA = ArgLocs[i];
     if (Ins[i].isOrigArg()) {
       std::advance(FuncArg, Ins[i].getOrigArgIndex() - CurArgIdx);
@@ -236,8 +253,8 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
         else if (VA.getLocInfo() == CCValAssign::ZExt)
           Opcode = ISD::AssertZext;
         if (Opcode)
-          ArgValue = DAG.getNode(Opcode, DL, RegVT, ArgValue,
-                                 DAG.getValueType(ValVT));
+          ArgValue =
+              DAG.getNode(Opcode, DL, RegVT, ArgValue, DAG.getValueType(ValVT));
         ArgValue = DAG.getNode(ISD::TRUNCATE, DL, ValVT, ArgValue);
       }
 
@@ -253,8 +270,8 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
       assert(VA.isMemLoc());
 
       // The stack pointer offset is relative to the caller stack frame.
-      int FI = MFI.CreateFixedObject(ValVT.getSizeInBits()/8,
-                                      VA.getLocMemOffset(), true);
+      int FI = MFI.CreateFixedObject(ValVT.getSizeInBits() / 8,
+                                     VA.getLocMemOffset(), true);
 
       // Create load nodes to retrieve arguments from the stack
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
@@ -266,7 +283,7 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
     }
   }
 
-//@Ordinary struct type: 1 {
+  //@Ordinary struct type: 1 {
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     // The HCPU ABIs for returning structs by value requires that we copy
     // the sret argument into $v0 for the return. Save the argument into
@@ -274,8 +291,7 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
     if (Ins[i].Flags.isSRet()) {
       unsigned Reg = HCPUFI->getSRetReturnReg();
       if (!Reg) {
-        Reg = MF.getRegInfo().createVirtualRegister(
-            getRegClassFor(MVT::i32));
+        Reg = MF.getRegInfo().createVirtualRegister(getRegClassFor(MVT::i32));
         HCPUFI->setSRetReturnReg(Reg);
       }
       SDValue Copy = DAG.getCopyToReg(DAG.getEntryNode(), DL, Reg, InVals[i]);
@@ -283,7 +299,10 @@ SDValue HCPUTargetLowering::LowerFormalArguments(
       break;
     }
   }
-//@Ordinary struct type: 1 }
+  //@Ordinary struct type: 1 }
+
+  if (IsVarArg)
+    writeVarArgRegs(OutChains, HCPUCCInfo, Chain, DL, DAG);
 
   // All stores are grouped in one node to allow the matching between
   // the size of Ins and InVals. This only happens when on varg functions
@@ -472,6 +491,16 @@ SDValue HCPUTargetLowering::LowerOperation(SDValue Op,
     return LowerGlobalAddress(Op, DAG);
   case ISD::SELECT:
     return lowerSELECT(Op, DAG);
+  case ISD::VASTART:
+    return lowerVASTART(Op, DAG);
+  case ISD::FRAMEADDR:
+    return lowerFRAMEADDR(Op, DAG);
+  case ISD::RETURNADDR:
+    return lowerRETURNADDR(Op, DAG);
+  case ISD::EH_RETURN:
+    return lowerEH_RETURN(Op, DAG);
+  case ISD::ADD:
+    return lowerADD(Op, DAG);
   }
   return SDValue();
 }
@@ -538,9 +567,8 @@ SDValue HCPUTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
 // addLiveIn - This helper function adds the specified physical register to the
 // MachineFunction as a live in value.  It also creates a corresponding
 // virtual register for it.
-static unsigned
-addLiveIn(MachineFunction &MF, unsigned PReg, const TargetRegisterClass *RC)
-{
+static unsigned addLiveIn(MachineFunction &MF, unsigned PReg,
+                          const TargetRegisterClass *RC) {
   unsigned VReg = MF.getRegInfo().createVirtualRegister(RC);
   MF.getRegInfo().addLiveIn(PReg, VReg);
   return VReg;
@@ -571,8 +599,7 @@ static bool CC_HCPUS32(unsigned ValNo, MVT ValVT, MVT LocVT,
   }
 
   Align OrigAlign = ArgFlags.getNonZeroOrigAlign();
-  unsigned Offset = State.AllocateStack(ValVT.getSizeInBits() >> 3,
-                                        OrigAlign);
+  unsigned Offset = State.AllocateStack(ValVT.getSizeInBits() >> 3, OrigAlign);
   State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, LocVT, LocInfo));
   return false;
 }
@@ -581,7 +608,7 @@ static bool CC_HCPUS32(unsigned ValNo, MVT ValVT, MVT LocVT,
 static bool CC_HCPUO32(unsigned ValNo, MVT ValVT, MVT LocVT,
                        CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
                        CCState &State) {
-  static const MCPhysReg IntRegs[] = { HCPU::A0, HCPU::A1 };
+  static const MCPhysReg IntRegs[] = {HCPU::A0, HCPU::A1};
 
   // Do not process byval args here.
   if (ArgFlags.isByVal())
@@ -626,8 +653,8 @@ static bool CC_HCPUO32(unsigned ValNo, MVT ValVT, MVT LocVT,
     llvm_unreachable("Cannot handle this ValVT.");
 
   if (!Reg) {
-    unsigned Offset = State.AllocateStack(ValVT.getSizeInBits() >> 3,
-                                          Align(OrigAlign));
+    unsigned Offset =
+        State.AllocateStack(ValVT.getSizeInBits() >> 3, Align(OrigAlign));
     State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, LocVT, LocInfo));
   } else
     State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
@@ -638,13 +665,11 @@ static bool CC_HCPUO32(unsigned ValNo, MVT ValVT, MVT LocVT,
 //                  Call Calling Convention Implementation
 //===----------------------------------------------------------------------===//
 
-static const MCPhysReg O32IntRegs[] = {
-  HCPU::A0, HCPU::A1
-};
+static const MCPhysReg O32IntRegs[] = {HCPU::A0, HCPU::A1};
 
-void HCPUTargetLowering::HCPUCC::
-analyzeFormalArguments(const SmallVectorImpl<ISD::InputArg> &Args,
-                       bool IsSoftFloat, Function::const_arg_iterator FuncArg) {
+void HCPUTargetLowering::HCPUCC::analyzeFormalArguments(
+    const SmallVectorImpl<ISD::InputArg> &Args, bool IsSoftFloat,
+    Function::const_arg_iterator FuncArg) {
   unsigned NumArgs = Args.size();
   llvm::CCAssignFn *FixedFn = fixedArgFn();
   unsigned CurArgIdx = 0;
@@ -685,17 +710,18 @@ void HCPUTargetLowering::HCPUCC::handleByValArg(unsigned ValNo, MVT ValVT,
   struct ByValArgInfo ByVal;
   unsigned RegSize = regSize();
   unsigned ByValSize = alignTo(ArgFlags.getByValSize(), RegSize);
-  Align Alignment = std::min(std::max(ArgFlags.getNonZeroByValAlign(), Align(RegSize)),
-                            Align(RegSize * 2));
+  Align Alignment =
+      std::min(std::max(ArgFlags.getNonZeroByValAlign(), Align(RegSize)),
+               Align(RegSize * 2));
 
   if (useRegsForByval())
     allocateRegs(ByVal, ByValSize, Alignment.value());
 
   // Allocate space on caller's stack.
-  ByVal.Address = CCInfo.AllocateStack(ByValSize - RegSize * ByVal.NumRegs,
-                                       Alignment);
-  CCInfo.addLoc(CCValAssign::getMem(ValNo, ValVT, ByVal.Address, LocVT,
-                                    LocInfo));
+  ByVal.Address =
+      CCInfo.AllocateStack(ByValSize - RegSize * ByVal.NumRegs, Alignment);
+  CCInfo.addLoc(
+      CCValAssign::getMem(ValNo, ValVT, ByVal.Address, LocVT, LocInfo));
   ByValArgs.push_back(ByVal);
 }
 
@@ -735,11 +761,11 @@ void HCPUTargetLowering::HCPUCC::allocateRegs(ByValArgInfo &ByVal,
     CCInfo.AllocateReg(IntArgRegs[I]);
 }
 
-void HCPUTargetLowering::
-copyByValRegs(SDValue Chain, const SDLoc &DL, std::vector<SDValue> &OutChains,
-              SelectionDAG &DAG, const ISD::ArgFlagsTy &Flags,
-              SmallVectorImpl<SDValue> &InVals, const Argument *FuncArg,
-              const HCPUCC &CC, const ByValArgInfo &ByVal) const {
+void HCPUTargetLowering::copyByValRegs(
+    SDValue Chain, const SDLoc &DL, std::vector<SDValue> &OutChains,
+    SelectionDAG &DAG, const ISD::ArgFlagsTy &Flags,
+    SmallVectorImpl<SDValue> &InVals, const Argument *FuncArg, const HCPUCC &CC,
+    const ByValArgInfo &ByVal) const {
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo &MFI = MF.getFrameInfo();
   unsigned RegAreaSize = ByVal.NumRegs * CC.regSize();
@@ -749,8 +775,9 @@ copyByValRegs(SDValue Chain, const SDLoc &DL, std::vector<SDValue> &OutChains,
   const ArrayRef<MCPhysReg> ByValArgRegs = CC.intArgRegs();
 
   if (RegAreaSize)
-    FrameObjOffset = (int)CC.reservedArgArea() -
-      (int)((CC.numIntArgRegs() - ByVal.FirstIdx) * CC.regSize());
+    FrameObjOffset =
+        (int)CC.reservedArgArea() -
+        (int)((CC.numIntArgRegs() - ByVal.FirstIdx) * CC.regSize());
   else
     FrameObjOffset = ByVal.Address;
 
@@ -779,10 +806,10 @@ copyByValRegs(SDValue Chain, const SDLoc &DL, std::vector<SDValue> &OutChains,
   }
 }
 
-SDValue
-HCPUTargetLowering::passArgOnStack(SDValue StackPtr, unsigned Offset,
-                                   SDValue Chain, SDValue Arg, const SDLoc &DL,
-                                   bool IsTailCall, SelectionDAG &DAG) const {
+SDValue HCPUTargetLowering::passArgOnStack(SDValue StackPtr, unsigned Offset,
+                                           SDValue Chain, SDValue Arg,
+                                           const SDLoc &DL, bool IsTailCall,
+                                           SelectionDAG &DAG) const {
   if (!IsTailCall) {
     SDValue PtrOff =
         DAG.getNode(ISD::ADD, DL, getPointerTy(DAG.getDataLayout()), StackPtr,
@@ -794,14 +821,15 @@ HCPUTargetLowering::passArgOnStack(SDValue StackPtr, unsigned Offset,
   int FI = MFI.CreateFixedObject(Arg.getValueSizeInBits() / 8, Offset, false);
   SDValue FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
   return DAG.getStore(Chain, DL, Arg, FIN, MachinePointerInfo(),
-                      /* Alignment = */ Align(0), MachineMemOperand::MOVolatile);
+                      /* Alignment = */ Align(0),
+                      MachineMemOperand::MOVolatile);
 }
 
-void HCPUTargetLowering::
-getOpndList(SmallVectorImpl<SDValue> &Ops,
-            std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
-            bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-            CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const {
+void HCPUTargetLowering::getOpndList(
+    SmallVectorImpl<SDValue> &Ops,
+    std::deque<std::pair<unsigned, SDValue>> &RegsToPass, bool IsPICCall,
+    bool GlobalOrExternal, bool InternalLinkage, CallLoweringInfo &CLI,
+    SDValue Callee, SDValue Chain) const {
   // T9 should contain the address of the callee function if
   // -reloction-model=pic or it is an indirect call.
   if (IsPICCall || !GlobalOrExternal) {
@@ -841,7 +869,7 @@ getOpndList(SmallVectorImpl<SDValue> &Ops,
 
   // Add a register mask operand representing the call-preserved registers.
   const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
-  const uint32_t *Mask = 
+  const uint32_t *Mask =
       TRI->getCallPreservedMask(CLI.DAG.getMachineFunction(), CLI.CallConv);
   assert(Mask && "Missing call preserved mask for calling convention");
   Ops.push_back(CLI.DAG.getRegisterMask(Mask));
@@ -851,19 +879,18 @@ getOpndList(SmallVectorImpl<SDValue> &Ops,
 }
 /// LowerCall - functions arguments are copied from virtual regs to
 /// (physical regs)/(stack frame), CALLSEQ_START and CALLSEQ_END are emitted.
-SDValue
-HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
-                              SmallVectorImpl<SDValue> &InVals) const {
-  SelectionDAG &DAG                     = CLI.DAG;
-  SDLoc DL                              = CLI.DL;
+SDValue HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
+                                      SmallVectorImpl<SDValue> &InVals) const {
+  SelectionDAG &DAG = CLI.DAG;
+  SDLoc DL = CLI.DL;
   SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
-  SmallVectorImpl<SDValue> &OutVals     = CLI.OutVals;
-  SmallVectorImpl<ISD::InputArg> &Ins   = CLI.Ins;
-  SDValue Chain                         = CLI.Chain;
-  SDValue Callee                        = CLI.Callee;
-  bool &IsTailCall                      = CLI.IsTailCall;
-  CallingConv::ID CallConv              = CLI.CallConv;
-  bool IsVarArg                         = CLI.IsVarArg;
+  SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
+  SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
+  SDValue Chain = CLI.Chain;
+  SDValue Callee = CLI.Callee;
+  bool &IsTailCall = CLI.IsTailCall;
+  CallingConv::ID CallConv = CLI.CallConv;
+  bool IsVarArg = CLI.IsVarArg;
 
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo &MFI = MF.getFrameInfo();
@@ -874,26 +901,34 @@ HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // Analyze operands of the call, assigning locations to each operand.
   SmallVector<CCValAssign, 16> ArgLocs;
-  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(),
-                 ArgLocs, *DAG.getContext());
+  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), ArgLocs,
+                 *DAG.getContext());
   HCPUCC::SpecialCallingConvType SpecialCallingConv =
-    getSpecialCallingConv(Callee);
-  HCPUCC HCPUCCInfo(CallConv, ABI.IsO32(), 
-                    CCInfo, SpecialCallingConv);
+      getSpecialCallingConv(Callee);
+  HCPUCC HCPUCCInfo(CallConv, ABI.IsO32(), CCInfo, SpecialCallingConv);
 
-  HCPUCCInfo.analyzeCallOperands(Outs, IsVarArg,
-                                 Subtarget.abiUsesSoftFloat(),
+  HCPUCCInfo.analyzeCallOperands(Outs, IsVarArg, Subtarget.abiUsesSoftFloat(),
                                  Callee.getNode(), CLI.getArgs());
 
   // Get a count of how many bytes are to be pushed on the stack.
   unsigned NextStackOffset = CCInfo.getStackSize();
 
+#ifdef ENABLE_GPRESTORE
+  if (!HCPUReserveGP) {
+    // If this is the first call, create a stack frame object that points to
+    // a location to which .cprestore saves $gp.
+    if (IsPIC && HCPUFI->globalBaseRegFixed() && !HCPUFI->getGPFI())
+      HCPUFI->setGPFI(MFI.CreateFixedObject(4, 0, true));
+    if (HCPUFI->needGPSaveRestore())
+      MFI.setObjectOffset(HCPUFI->getGPFI(), NextStackOffset);
+  }
+#endif
+
   //@TailCall 1 {
   // Check if it's really possible to do a tail call.
   if (IsTailCall)
-    IsTailCall =
-      isEligibleForTailCallOptimization(HCPUCCInfo, NextStackOffset,
-                                        *MF.getInfo<HCPUFunctionInfo>());
+    IsTailCall = isEligibleForTailCallOptimization(
+        HCPUCCInfo, NextStackOffset, *MF.getInfo<HCPUFunctionInfo>());
 
   if (!IsTailCall && CLI.CB && CLI.CB->isMustTailCall())
     report_fatal_error("failed to perform tail call elimination on a call "
@@ -915,19 +950,18 @@ HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     Chain = DAG.getCALLSEQ_START(Chain, NextStackOffset, 0, DL);
   //@TailCall 2 }
 
-  SDValue StackPtr =
-      DAG.getCopyFromReg(Chain, DL, HCPU::SP,
-                         getPointerTy(DAG.getDataLayout()));
+  SDValue StackPtr = DAG.getCopyFromReg(Chain, DL, HCPU::SP,
+                                        getPointerTy(DAG.getDataLayout()));
 
   // With EABI is it possible to have 16 args on registers.
-  std::deque< std::pair<unsigned, SDValue> > RegsToPass;
+  std::deque<std::pair<unsigned, SDValue>> RegsToPass;
   SmallVector<SDValue, 8> MemOpChains;
   HCPUCC::byval_iterator ByValArg = HCPUCCInfo.byval_begin();
 
   //@1 {
   // Walk the register/memloc assignments, inserting copies/loads.
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
-  //@1 }
+    //@1 }
     SDValue Arg = OutVals[i];
     CCValAssign &VA = ArgLocs[i];
     MVT LocVT = VA.getLocVT();
@@ -949,7 +983,8 @@ HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
     // Promote the value if needed.
     switch (VA.getLocInfo()) {
-    default: llvm_unreachable("Unknown loc info!");
+    default:
+      llvm_unreachable("Unknown loc info!");
     case CCValAssign::Full:
       break;
     case CCValAssign::SExt:
@@ -975,8 +1010,8 @@ HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
     // emit ISD::STORE whichs stores the
     // parameter value to a stack Location
-    MemOpChains.push_back(passArgOnStack(StackPtr, VA.getLocMemOffset(),
-                                         Chain, Arg, DL, IsTailCall, DAG));
+    MemOpChains.push_back(passArgOnStack(StackPtr, VA.getLocMemOffset(), Chain,
+                                         Arg, DL, IsTailCall, DAG));
   }
 
   // Transform all store nodes into one single node because all store
@@ -988,7 +1023,7 @@ HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   // direct call is) turn it into a TargetGlobalAddress/TargetExternalSymbol
   // node so that legalize doesn't hack it.
   bool IsPICCall = IsPIC; // true if calls are translated to
-                                         // jalr $t9
+                          // jalr $t9
   bool GlobalOrExternal = false, InternalLinkage = false;
   EVT Ty = Callee.getValueType();
 
@@ -1007,14 +1042,12 @@ HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
                                           getPointerTy(DAG.getDataLayout()), 0,
                                           HCPUII::MO_NO_FLAG);
     GlobalOrExternal = true;
-  }
-  else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
+  } else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
     const char *Sym = S->getSymbol();
 
     if (!IsPIC) // static
-      Callee = DAG.getTargetExternalSymbol(Sym,
-                                           getPointerTy(DAG.getDataLayout()),
-                                           HCPUII::MO_NO_FLAG);
+      Callee = DAG.getTargetExternalSymbol(
+          Sym, getPointerTy(DAG.getDataLayout()), HCPUII::MO_NO_FLAG);
     else // PIC
       Callee = getAddrGlobal(S, Ty, DAG, HCPUII::MO_GOT_CALL, Chain,
                              FuncInfo->callPtrInfo(MF, Sym));
@@ -1043,28 +1076,25 @@ HCPUTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // Handle result values, copying them out of physregs into vregs that we
   // return.
-  return LowerCallResult(Chain, InFlag, CallConv, IsVarArg,
-                         Ins, DL, DAG, InVals, CLI.Callee.getNode(), CLI.RetTy);
+  return LowerCallResult(Chain, InFlag, CallConv, IsVarArg, Ins, DL, DAG,
+                         InVals, CLI.Callee.getNode(), CLI.RetTy);
 }
 /// LowerCallResult - Lower the result values of a call into the
 /// appropriate copies out of appropriate physical registers.
-SDValue
-HCPUTargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
-                                    CallingConv::ID CallConv, bool IsVarArg,
-                                    const SmallVectorImpl<ISD::InputArg> &Ins,
-                                    const SDLoc &DL, SelectionDAG &DAG,
-                                    SmallVectorImpl<SDValue> &InVals,
-                                    const SDNode *CallNode,
-                                    const Type *RetTy) const {
+SDValue HCPUTargetLowering::LowerCallResult(
+    SDValue Chain, SDValue InFlag, CallingConv::ID CallConv, bool IsVarArg,
+    const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
+    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals, const SDNode *CallNode,
+    const Type *RetTy) const {
   // Assign locations to each value returned by this call.
   SmallVector<CCValAssign, 16> RVLocs;
-  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(),
-		 RVLocs, *DAG.getContext());
-		 
+  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), RVLocs,
+                 *DAG.getContext());
+
   HCPUCC HCPUCCInfo(CallConv, ABI.IsO32(), CCInfo);
 
-  HCPUCCInfo.analyzeCallResult(Ins, Subtarget.abiUsesSoftFloat(),
-                               CallNode, RetTy);
+  HCPUCCInfo.analyzeCallResult(Ins, Subtarget.abiUsesSoftFloat(), CallNode,
+                               RetTy);
 
   // Copy all of the result registers out of their specified physreg.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
@@ -1081,36 +1111,34 @@ HCPUTargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
 
   return Chain;
 }
-bool
-HCPUTargetLowering::CanLowerReturn(CallingConv::ID CallConv,
-                                   MachineFunction &MF, bool IsVarArg,
-                                   const SmallVectorImpl<ISD::OutputArg> &Outs,
-                                   LLVMContext &Context) const {
+bool HCPUTargetLowering::CanLowerReturn(
+    CallingConv::ID CallConv, MachineFunction &MF, bool IsVarArg,
+    const SmallVectorImpl<ISD::OutputArg> &Outs, LLVMContext &Context) const {
   SmallVector<CCValAssign, 16> RVLocs;
-  CCState CCInfo(CallConv, IsVarArg, MF,
-                 RVLocs, Context);
+  CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, Context);
   return CCInfo.CheckReturn(Outs, RetCC_HCPU);
 }
 HCPUTargetLowering::HCPUCC::SpecialCallingConvType
-  HCPUTargetLowering::getSpecialCallingConv(SDValue Callee) const {
+HCPUTargetLowering::getSpecialCallingConv(SDValue Callee) const {
   HCPUCC::SpecialCallingConvType SpecialCallingConv =
-    HCPUCC::NoSpecialCallingConv;
+      HCPUCC::NoSpecialCallingConv;
   return SpecialCallingConv;
 }
-void HCPUTargetLowering::HCPUCC::
-analyzeCallOperands(const SmallVectorImpl<ISD::OutputArg> &Args,
-                    bool IsVarArg, bool IsSoftFloat, const SDNode *CallNode,
-                    std::vector<ArgListEntry> &FuncArgs) {
-//@analyzeCallOperands body {
+void HCPUTargetLowering::HCPUCC::analyzeCallOperands(
+    const SmallVectorImpl<ISD::OutputArg> &Args, bool IsVarArg,
+    bool IsSoftFloat, const SDNode *CallNode,
+    std::vector<ArgListEntry> &FuncArgs) {
+  //@analyzeCallOperands body {
   assert((CallConv != CallingConv::Fast || !IsVarArg) &&
          "CallingConv::Fast shouldn't be used for vararg functions.");
 
   unsigned NumOpnds = Args.size();
   llvm::CCAssignFn *FixedFn = fixedArgFn();
+  llvm::CCAssignFn *VarFn = varArgFn();
 
   //@3 {
   for (unsigned I = 0; I != NumOpnds; ++I) {
-  //@3 }
+    //@3 }
     MVT ArgVT = Args[I].VT;
     ISD::ArgFlagsTy ArgFlags = Args[I].Flags;
     bool R;
@@ -1120,7 +1148,9 @@ analyzeCallOperands(const SmallVectorImpl<ISD::OutputArg> &Args,
       continue;
     }
 
-    {
+    if (IsVarArg && !Args[I].IsFixed)
+      R = VarFn(I, ArgVT, ArgVT, CCValAssign::Full, ArgFlags, CCInfo);
+    else {
       MVT RegVT = getRegVT(ArgVT, IsSoftFloat);
       R = FixedFn(I, ArgVT, RegVT, CCValAssign::Full, ArgFlags, CCInfo);
     }
@@ -1136,17 +1166,18 @@ analyzeCallOperands(const SmallVectorImpl<ISD::OutputArg> &Args,
 }
 
 // Copy byVal arg to registers and stack.
-void HCPUTargetLowering::
-passByValArg(SDValue Chain, const SDLoc &DL,
-             std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
-             SmallVectorImpl<SDValue> &MemOpChains, SDValue StackPtr,
-             MachineFrameInfo &MFI, SelectionDAG &DAG, SDValue Arg,
-             const HCPUCC &CC, const ByValArgInfo &ByVal,
-             const ISD::ArgFlagsTy &Flags, bool isLittle) const {
+void HCPUTargetLowering::passByValArg(
+    SDValue Chain, const SDLoc &DL,
+    std::deque<std::pair<unsigned, SDValue>> &RegsToPass,
+    SmallVectorImpl<SDValue> &MemOpChains, SDValue StackPtr,
+    MachineFrameInfo &MFI, SelectionDAG &DAG, SDValue Arg, const HCPUCC &CC,
+    const ByValArgInfo &ByVal, const ISD::ArgFlagsTy &Flags,
+    bool isLittle) const {
   unsigned ByValSizeInBytes = Flags.getByValSize();
   unsigned OffsetInBytes = 0; // From beginning of struct
   unsigned RegSizeInBytes = CC.regSize();
-  unsigned Alignment = std::min((unsigned)Flags.getNonZeroByValAlign().value(), RegSizeInBytes);
+  unsigned Alignment =
+      std::min((unsigned)Flags.getNonZeroByValAlign().value(), RegSizeInBytes);
   EVT PtrTy = getPointerTy(DAG.getDataLayout()),
       RegTy = MVT::getIntegerVT(RegSizeInBytes * 8);
 
@@ -1160,8 +1191,8 @@ passByValArg(SDValue Chain, const SDLoc &DL,
          ++I, OffsetInBytes += RegSizeInBytes) {
       SDValue LoadPtr = DAG.getNode(ISD::ADD, DL, PtrTy, Arg,
                                     DAG.getConstant(OffsetInBytes, DL, PtrTy));
-      SDValue LoadVal = DAG.getLoad(RegTy, DL, Chain, LoadPtr,
-                                    MachinePointerInfo());
+      SDValue LoadVal =
+          DAG.getLoad(RegTy, DL, Chain, LoadPtr, MachinePointerInfo());
       MemOpChains.push_back(LoadVal.getValue(1));
       unsigned ArgReg = ArgRegs[ByVal.FirstIdx + I];
       RegsToPass.push_back(std::make_pair(ArgReg, LoadVal));
@@ -1186,8 +1217,9 @@ passByValArg(SDValue Chain, const SDLoc &DL,
           continue;
 
         // Load subword.
-        SDValue LoadPtr = DAG.getNode(ISD::ADD, DL, PtrTy, Arg,
-                                      DAG.getConstant(OffsetInBytes, DL, PtrTy));
+        SDValue LoadPtr =
+            DAG.getNode(ISD::ADD, DL, PtrTy, Arg,
+                        DAG.getConstant(OffsetInBytes, DL, PtrTy));
         SDValue LoadVal = DAG.getExtLoad(
             ISD::ZEXTLOAD, DL, RegTy, Chain, LoadPtr, MachinePointerInfo(),
             MVT::getIntegerVT(LoadSizeInBytes * 8), MaybeAlign(Alignment));
@@ -1226,10 +1258,154 @@ passByValArg(SDValue Chain, const SDLoc &DL,
                             DAG.getConstant(OffsetInBytes, DL, PtrTy));
   SDValue Dst = DAG.getNode(ISD::ADD, DL, PtrTy, StackPtr,
                             DAG.getIntPtrConstant(ByVal.Address, DL));
-  Chain = DAG.getMemcpy(Chain, DL, Dst, Src,
-                        DAG.getConstant(MemCpySize, DL, PtrTy),
-                        Align(Alignment), /*isVolatile=*/false, /*AlwaysInline=*/false,
-                        nullptr,/*isTailCall=*/false,
-                        MachinePointerInfo(), MachinePointerInfo());
+  Chain = DAG.getMemcpy(
+      Chain, DL, Dst, Src, DAG.getConstant(MemCpySize, DL, PtrTy),
+      Align(Alignment), /*isVolatile=*/false, /*AlwaysInline=*/false, nullptr,
+      /*isTailCall=*/false, MachinePointerInfo(), MachinePointerInfo());
   MemOpChains.push_back(Chain);
+}
+
+SDValue HCPUTargetLowering::lowerVASTART(SDValue Op, SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  HCPUFunctionInfo *FuncInfo = MF.getInfo<HCPUFunctionInfo>();
+
+  SDLoc DL = SDLoc(Op);
+  SDValue FI = DAG.getFrameIndex(FuncInfo->getVarArgsFrameIndex(),
+                                 getPointerTy(MF.getDataLayout()));
+
+  // vastart just stores the address of the VarArgsFrameIndex slot into the
+  // memory location argument.
+  const Value *SV = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
+  return DAG.getStore(Op.getOperand(0), DL, FI, Op.getOperand(1),
+                      MachinePointerInfo(SV));
+}
+
+llvm::CCAssignFn *HCPUTargetLowering::HCPUCC::varArgFn() const {
+  if (IsO32)
+    return CC_HCPUO32;
+  else // IsS32
+    return CC_HCPUS32;
+}
+
+void HCPUTargetLowering::writeVarArgRegs(std::vector<SDValue> &OutChains,
+                                         const HCPUCC &CC, SDValue Chain,
+                                         const SDLoc &DL,
+                                         SelectionDAG &DAG) const {
+  unsigned NumRegs = CC.numIntArgRegs();
+  const ArrayRef<MCPhysReg> ArgRegs = CC.intArgRegs();
+  const CCState &CCInfo = CC.getCCInfo();
+  unsigned Idx = CCInfo.getFirstUnallocated(ArgRegs);
+  unsigned RegSize = CC.regSize();
+  MVT RegTy = MVT::getIntegerVT(RegSize * 8);
+  const TargetRegisterClass *RC = getRegClassFor(RegTy);
+  MachineFunction &MF = DAG.getMachineFunction();
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+  HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
+
+  // Offset of the first variable argument from stack pointer.
+  int VaArgOffset;
+
+  if (NumRegs == Idx)
+    VaArgOffset = alignTo(CCInfo.getStackSize(), RegSize);
+  else
+    VaArgOffset = (int)CC.reservedArgArea() - (int)(RegSize * (NumRegs - Idx));
+
+  // Record the frame index of the first variable argument
+  // which is a value necessary to VASTART.
+  int FI = MFI.CreateFixedObject(RegSize, VaArgOffset, true);
+  HCPUFI->setVarArgsFrameIndex(FI);
+
+  // Copy the integer registers that have not been used for argument passing
+  // to the argument register save area. For O32, the save area is allocated
+  // in the caller's stack frame, while for N32/64, it is allocated in the
+  // callee's stack frame.
+  for (unsigned I = Idx; I < NumRegs; ++I, VaArgOffset += RegSize) {
+    unsigned Reg = addLiveIn(MF, ArgRegs[I], RC);
+    SDValue ArgValue = DAG.getCopyFromReg(Chain, DL, Reg, RegTy);
+    FI = MFI.CreateFixedObject(RegSize, VaArgOffset, true);
+    SDValue PtrOff = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
+    SDValue Store =
+        DAG.getStore(Chain, DL, ArgValue, PtrOff, MachinePointerInfo());
+    cast<StoreSDNode>(Store.getNode())
+        ->getMemOperand()
+        ->setValue((Value *)nullptr);
+    OutChains.push_back(Store);
+  }
+}
+
+SDValue HCPUTargetLowering::
+lowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
+  // check the depth
+  assert((cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue() == 0) &&
+         "Frame address can only be determined for current frame.");
+
+  MachineFrameInfo &MFI = DAG.getMachineFunction().getFrameInfo();
+  MFI.setFrameAddressIsTaken(true);
+  EVT VT = Op.getValueType();
+  SDLoc DL(Op);
+  SDValue FrameAddr = DAG.getCopyFromReg(
+      DAG.getEntryNode(), DL, HCPU::FP, VT);
+  return FrameAddr;
+}
+
+SDValue HCPUTargetLowering::lowerRETURNADDR(SDValue Op,
+                                            SelectionDAG &DAG) const {
+  if (verifyReturnAddressArgumentIsConstant(Op, DAG))
+    return SDValue();
+
+  // check the depth
+  assert((cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue() == 0) &&
+         "Return address can be determined only for current frame.");
+
+  MachineFunction &MF = DAG.getMachineFunction();
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MVT VT = Op.getSimpleValueType();
+  unsigned LR = HCPU::LR;
+  MFI.setReturnAddressIsTaken(true);
+
+  // Return LR, which contains the return address. Mark it an implicit live-in.
+  unsigned Reg = MF.addLiveIn(LR, getRegClassFor(VT));
+  return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), Reg, VT);
+}
+
+// An EH_RETURN is the result of lowering llvm.eh.return which in turn is
+// generated from __builtin_eh_return (offset, handler)
+// The effect of this is to adjust the stack pointer by "offset"
+// and then branch to "handler".
+SDValue HCPUTargetLowering::lowerEH_RETURN(SDValue Op, SelectionDAG &DAG)
+                                                                     const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
+
+  HCPUFI->setCallsEhReturn();
+  SDValue Chain     = Op.getOperand(0);
+  SDValue Offset    = Op.getOperand(1);
+  SDValue Handler   = Op.getOperand(2);
+  SDLoc DL(Op);
+  EVT Ty = MVT::i32;
+
+  // Store stack offset in V1, store jump target in V0. Glue CopyToReg and
+  // EH_RETURN nodes, so that instructions are emitted back-to-back.
+  unsigned OffsetReg = HCPU::V1;
+  unsigned AddrReg = HCPU::V0;
+  Chain = DAG.getCopyToReg(Chain, DL, OffsetReg, Offset, SDValue());
+  Chain = DAG.getCopyToReg(Chain, DL, AddrReg, Handler, Chain.getValue(1));
+  return DAG.getNode(HCPUISD::EH_RETURN, DL, MVT::Other, Chain,
+                     DAG.getRegister(OffsetReg, Ty),
+                     DAG.getRegister(AddrReg, getPointerTy(MF.getDataLayout())),
+                     Chain.getValue(1));
+}
+
+SDValue HCPUTargetLowering::lowerADD(SDValue Op, SelectionDAG &DAG) const {
+  if (Op->getOperand(0).getOpcode() != ISD::FRAMEADDR
+      || cast<ConstantSDNode>
+        (Op->getOperand(0).getOperand(0))->getZExtValue() != 0
+      || Op->getOperand(1).getOpcode() != ISD::FRAME_TO_ARGS_OFFSET)
+    return SDValue();
+
+  MachineFunction &MF = DAG.getMachineFunction();
+  HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
+
+  HCPUFI->setCallsEhDwarf();
+  return Op;
 }

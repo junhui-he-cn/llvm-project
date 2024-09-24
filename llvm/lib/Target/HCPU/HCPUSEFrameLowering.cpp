@@ -35,11 +35,11 @@ HCPUSEFrameLowering::HCPUSEFrameLowering(const HCPUSubtarget &STI)
 
 void HCPUSEFrameLowering::emitPrologue(MachineFunction &MF,
                                        MachineBasicBlock &MBB) const {
-  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineFrameInfo &MFI    = MF.getFrameInfo();
   HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
 
   const HCPUSEInstrInfo &TII =
-      *static_cast<const HCPUSEInstrInfo *>(STI.getInstrInfo());
+    *static_cast<const HCPUSEInstrInfo*>(STI.getInstrInfo());
   const HCPURegisterInfo &RegInfo =
       *static_cast<const HCPURegisterInfo *>(STI.getRegisterInfo());
 
@@ -47,14 +47,16 @@ void HCPUSEFrameLowering::emitPrologue(MachineFunction &MF,
   DebugLoc dl = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
   HCPUABIInfo ABI = STI.getABI();
   unsigned SP = HCPU::SP;
+  unsigned FP = HCPU::FP;
+  unsigned ZERO = HCPU::ZERO;
+  unsigned ADDu = HCPU::ADDu;
   const TargetRegisterClass *RC = &HCPU::GPROutRegClass;
 
   // First, compute final stack size.
   uint64_t StackSize = MFI.getStackSize();
 
   // No need to allocate space on the stack.
-  if (StackSize == 0 && !MFI.adjustsStack())
-    return;
+  if (StackSize == 0 && !MFI.adjustsStack()) return;
 
   const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
 
@@ -62,8 +64,9 @@ void HCPUSEFrameLowering::emitPrologue(MachineFunction &MF,
   TII.adjustStackPtr(SP, -StackSize, MBB, MBBI);
 
   // emit ".cfi_def_cfa_offset StackSize"
-  unsigned CFIIndex =
-      MF.addFrameInst(MCCFIInstruction::cfiDefCfaOffset(nullptr, StackSize));
+  unsigned CFIIndex = 
+      MF.addFrameInst(
+      MCCFIInstruction::cfiDefCfaOffset(nullptr, StackSize));
   BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
       .addCFIIndex(CFIIndex);
 
@@ -78,8 +81,7 @@ void HCPUSEFrameLowering::emitPrologue(MachineFunction &MF,
     // Iterate over list of callee-saved registers and emit .cfi_offset
     // directives.
     for (std::vector<CalleeSavedInfo>::const_iterator I = CSI.begin(),
-                                                      E = CSI.end();
-         I != E; ++I) {
+           E = CSI.end(); I != E; ++I) {
       int64_t Offset = MFI.getObjectOffset(I->getFrameIdx());
       unsigned Reg = I->getReg();
       {
@@ -91,12 +93,59 @@ void HCPUSEFrameLowering::emitPrologue(MachineFunction &MF,
       }
     }
   }
+
+  if (HCPUFI->callsEhReturn()) {
+    // Insert instructions that spill eh data registers.
+    for (int I = 0; I < ABI.EhDataRegSize(); ++I) {
+      if (!MBB.isLiveIn(ABI.GetEhDataReg(I)))
+        MBB.addLiveIn(ABI.GetEhDataReg(I));
+      TII.storeRegToStackSlot(MBB, MBBI, ABI.GetEhDataReg(I), false,
+                              HCPUFI->getEhDataRegFI(I), RC, &RegInfo, Register());
+    }
+
+    // Emit .cfi_offset directives for eh data registers.
+    for (int I = 0; I < ABI.EhDataRegSize(); ++I) {
+      int64_t Offset = MFI.getObjectOffset(HCPUFI->getEhDataRegFI(I));
+      unsigned Reg = MRI->getDwarfRegNum(ABI.GetEhDataReg(I), true);
+      unsigned CFIIndex = MF.addFrameInst(
+          MCCFIInstruction::createOffset(nullptr, Reg, Offset));
+      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
+    }
+  }
+
+  // if framepointer enabled, set it to point to the stack pointer.
+  if (hasFP(MF)) {
+    if (HCPUFI->callsEhDwarf()) {
+      BuildMI(MBB, MBBI, dl, TII.get(ADDu), HCPU::V0).addReg(FP).addReg(ZERO)
+        .setMIFlag(MachineInstr::FrameSetup);
+    }
+    //@ Insert instruction "move $fp, $sp" at this location.
+    BuildMI(MBB, MBBI, dl, TII.get(ADDu), FP).addReg(SP).addReg(ZERO)
+      .setMIFlag(MachineInstr::FrameSetup);
+
+    // emit ".cfi_def_cfa_register $fp"
+    unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::createDefCfaRegister(
+        nullptr, MRI->getDwarfRegNum(FP, true)));
+    BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+        .addCFIIndex(CFIIndex);
+  }
+//@ENABLE_GPRESTORE {
+#ifdef ENABLE_GPRESTORE
+  // Restore GP from the saved stack location
+  if (HCPUFI->needGPSaveRestore()) {
+    unsigned Offset = MFI.getObjectOffset(HCPUFI->getGPFI());
+    BuildMI(MBB, MBBI, dl, TII.get(HCPU::CPRESTORE)).addImm(Offset)
+      .addReg(HCPU::GP);
+  }
+#endif
+//@ENABLE_GPRESTORE }
 }
 
 void HCPUSEFrameLowering::emitEpilogue(MachineFunction &MF,
                                        MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator MBBI = MBB.getFirstTerminator();
-  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineFrameInfo &MFI            = MF.getFrameInfo();
   HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
 
   const HCPUSEInstrInfo &TII =
@@ -107,6 +156,36 @@ void HCPUSEFrameLowering::emitEpilogue(MachineFunction &MF,
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
   HCPUABIInfo ABI = STI.getABI();
   unsigned SP = HCPU::SP;
+  unsigned FP = HCPU::FP;
+  unsigned ZERO = HCPU::ZERO;
+  unsigned ADDu = HCPU::ADDu;
+
+  // if framepointer enabled, restore the stack pointer.
+  if (hasFP(MF)) {
+    // Find the first instruction that restores a callee-saved register.
+    MachineBasicBlock::iterator I = MBBI;
+
+    for (unsigned i = 0; i < MFI.getCalleeSavedInfo().size(); ++i)
+      --I;
+
+    // Insert instruction "move $sp, $fp" at this location.
+    BuildMI(MBB, I, DL, TII.get(ADDu), SP).addReg(FP).addReg(ZERO);
+  }
+
+  if (HCPUFI->callsEhReturn()) {
+    const TargetRegisterClass *RC = &HCPU::GPROutRegClass;
+
+    // Find first instruction that restores a callee-saved register.
+    MachineBasicBlock::iterator I = MBBI;
+    for (unsigned i = 0; i < MFI.getCalleeSavedInfo().size(); ++i)
+      --I;
+
+    // Insert instructions that restore eh data registers.
+    for (int J = 0; J < ABI.EhDataRegSize(); ++J) {
+      TII.loadRegFromStackSlot(MBB, I, ABI.GetEhDataReg(J),
+                               HCPUFI->getEhDataRegFI(J), RC, &RegInfo, Register());
+    }
+  }
 
   // Get the number of bytes from FrameInfo
   uint64_t StackSize = MFI.getStackSize();
@@ -147,8 +226,8 @@ void HCPUSEFrameLowering::determineCalleeSaves(MachineFunction &MF,
   return;
 }
 
-bool
-HCPUSEFrameLowering::hasReservedCallFrame(const MachineFunction &MF) const {
+bool HCPUSEFrameLowering::hasReservedCallFrame(
+    const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
 
   // Reserve call frame if the size of the maximum call frame fits into 16-bit
@@ -156,14 +235,12 @@ HCPUSEFrameLowering::hasReservedCallFrame(const MachineFunction &MF) const {
   // Make sure the second register scavenger spill slot can be accessed with one
   // instruction.
   return isInt<16>(MFI.getMaxCallFrameSize() + getStackAlignment()) &&
-    !MFI.hasVarSizedObjects();
+         !MFI.hasVarSizedObjects();
 }
 
-bool HCPUSEFrameLowering::
-spillCalleeSavedRegisters(MachineBasicBlock &MBB,
-                          MachineBasicBlock::iterator MI,
-                          ArrayRef<CalleeSavedInfo> CSI,
-                          const TargetRegisterInfo *TRI) const {
+bool HCPUSEFrameLowering::spillCalleeSavedRegisters(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+    ArrayRef<CalleeSavedInfo> CSI, const TargetRegisterInfo *TRI) const {
   MachineFunction *MF = MBB.getParent();
   MachineBasicBlock *EntryBlock = &MF->front();
   const TargetInstrInfo &TII = *MF->getSubtarget().getInstrInfo();
@@ -175,16 +252,16 @@ spillCalleeSavedRegisters(MachineBasicBlock &MBB,
     // It's killed at the spill, unless the register is LR and return address
     // is taken.
     unsigned Reg = CSI[i].getReg();
-    bool IsRAAndRetAddrIsTaken = (Reg == HCPU::LR)
-        && MF->getFrameInfo().isReturnAddressTaken();
+    bool IsRAAndRetAddrIsTaken =
+        (Reg == HCPU::LR) && MF->getFrameInfo().isReturnAddressTaken();
     if (!IsRAAndRetAddrIsTaken)
       EntryBlock->addLiveIn(Reg);
 
     // Insert the spill to the stack frame.
     bool IsKill = !IsRAAndRetAddrIsTaken;
     const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(Reg);
-    TII.storeRegToStackSlot(*EntryBlock, MI, Reg, IsKill,
-                            CSI[i].getFrameIdx(), RC, TRI, Register());
+    TII.storeRegToStackSlot(*EntryBlock, MI, Reg, IsKill, CSI[i].getFrameIdx(),
+                            RC, TRI, Register());
   }
 
   return true;

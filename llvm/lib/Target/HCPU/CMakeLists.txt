@@ -40,6 +40,7 @@ add_llvm_target(HCPUCodeGen
   HCPULongBranch.cpp
   HCPUDelUselessJMP.cpp
   HCPUDelaySlotFiller.cpp
+  HCPUEmitGPRestore.cpp
 
   LINK_COMPONENTS
   HCPUDesc

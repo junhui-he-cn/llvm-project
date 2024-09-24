@@ -28,9 +28,8 @@ public:
   HCPUFunctionInfo(const Function &F, const TargetSubtargetInfo *STI)
       : VarArgsFrameIndex(0), MaxCallFrameSize(0), EmitNOAT(false),
         SRetReturnReg(0), CallsEhReturn(false), CallsEhDwarf(false),
-        GlobalBaseReg(0), GPFI(0),
-        InArgFIRange(std::make_pair(-1, 0)), OutArgFIRange(std::make_pair(-1, 0)), DynAllocFI(0) {
-        }
+        GlobalBaseReg(0), GPFI(0), InArgFIRange(std::make_pair(-1, 0)),
+        OutArgFIRange(std::make_pair(-1, 0)), DynAllocFI(0) {}
 
   ~HCPUFunctionInfo();
 
@@ -51,7 +50,7 @@ public:
   bool globalBaseRegSet() const;
   unsigned getGlobalBaseReg();
 
-  int getVarArgsFrameInfo() const { return VarArgsFrameIndex; }
+  int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
   void setVarArgsFrameIndex(int Index) { VarArgsFrameIndex = Index; }
 
   bool getEmitNOAT() const { return EmitNOAT; }
@@ -87,6 +86,10 @@ public:
   /// Create a MachinePointerInfo that has a GlobalValuePseudoSourceValue object
   /// representing a GOT entry for a global function.
   MachinePointerInfo callPtrInfo(MachineFunction &MF, const GlobalValue *GV);
+
+#ifdef ENABLE_GPRESTORE
+  bool needGPSaveRestore() const { return getGPFI(); }
+#endif
 
 private:
   virtual void anchor();

@@ -136,6 +136,10 @@ public:
     return *getHCPUTargetMachine().getSubtargetImpl();
   }
 
+#ifdef ENABLE_GPRESTORE
+  void addPreRegAlloc() override;
+#endif
+
   bool addInstSelector() override;
 
   void addPreEmitPass() override;
@@ -152,6 +156,16 @@ bool HCPUPassConfig::addInstSelector() {
   addPass(createHCPUSEISelDag(getHCPUTargetMachine(), getOptLevel()));
   return false;
 }
+
+#ifdef ENABLE_GPRESTORE
+void HCPUPassConfig::addPreRegAlloc() {
+  if (!HCPUReserveGP) {
+    // $gp is a caller-saved register.
+    addPass(createHCPUEmitGPRestorePass(getHCPUTargetMachine()));
+  }
+  return;
+}
+#endif
 
 MachineFunctionInfo *HCPUTargetMachine::createMachineFunctionInfo(
     BumpPtrAllocator &Allocator, const Function &F,

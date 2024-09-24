@@ -227,3 +227,33 @@ bool HCPUMCInstLower::lowerLongBranch(const MachineInstr *MI,
     return true;
   }
 }
+
+#ifdef ENABLE_GPRESTORE
+// Lower ".cprestore offset" to "st $gp, offset($sp)".
+void HCPUMCInstLower::LowerCPRESTORE(int64_t Offset,
+                                     SmallVector<MCInst, 4>& MCInsts) {
+  assert(isInt<32>(Offset) && (Offset >= 0) &&
+         "Imm operand of .cprestore must be a non-negative 32-bit value.");
+
+  MCOperand SPReg = MCOperand::createReg(HCPU::SP), BaseReg = SPReg;
+  MCOperand GPReg = MCOperand::createReg(HCPU::GP);
+  MCOperand ZEROReg = MCOperand::createReg(HCPU::ZERO);
+
+  if (!isInt<16>(Offset)) {
+    unsigned Hi = ((Offset + 0x8000) >> 16) & 0xffff;
+    Offset &= 0xffff;
+    MCOperand ATReg = MCOperand::createReg(HCPU::AT);
+    BaseReg = ATReg;
+
+    // lui   at,hi
+    // add   at,at,sp
+    MCInsts.resize(2);
+    CreateMCInst(MCInsts[0], HCPU::LUi, ATReg, ZEROReg, MCOperand::createImm(Hi));
+    CreateMCInst(MCInsts[1], HCPU::ADD, ATReg, ATReg, SPReg);
+  }
+
+  MCInst St;
+  CreateMCInst(St, HCPU::ST, GPReg, BaseReg, MCOperand::createImm(Offset));
+  MCInsts.push_back(St);
+}
+#endif

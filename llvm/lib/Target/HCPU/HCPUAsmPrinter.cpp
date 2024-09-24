@@ -80,6 +80,12 @@ void HCPUAsmPrinter::emitInstruction(const MachineInstr *MI) {
       continue;
     }
 
+#ifdef ENABLE_GPRESTORE
+    if (I->getOpcode() == HCPU::CPRESTORE) {
+      emitPseudoCPRestore(*OutStreamer, &*I);
+      continue;
+    }
+#endif
 
     if (I->isPseudo() && !isLongBranchPseudo(I->getOpcode()))
       llvm_unreachable("Pseudo opcode found in emitInstruction()");
@@ -294,3 +300,48 @@ bool HCPUAsmPrinter::isLongBranchPseudo(int Opcode) const {
 extern "C" void LLVMInitializeHCPUAsmPrinter() {
   RegisterAsmPrinter<HCPUAsmPrinter> X(getTheHCPUTarget());
 }
+
+#ifdef ENABLE_GPRESTORE
+void HCPUAsmPrinter::EmitInstrWithMacroNoAT(const MachineInstr *MI) {
+  MCInst TmpInst;
+
+  MCInstLowering.Lower(MI, TmpInst);
+  OutStreamer->emitRawText(StringRef("\t.set\tmacro"));
+  if (HCPUFI->getEmitNOAT())
+    OutStreamer->emitRawText(StringRef("\t.set\tat"));
+  OutStreamer->emitInstruction(TmpInst, getSubtargetInfo());
+  if (HCPUFI->getEmitNOAT())
+    OutStreamer->emitRawText(StringRef("\t.set\tnoat"));
+  OutStreamer->emitRawText(StringRef("\t.set\tnomacro"));
+}
+#endif
+
+#ifdef ENABLE_GPRESTORE
+void HCPUAsmPrinter::emitPseudoCPRestore(MCStreamer &OutStreamer,
+                                              const MachineInstr *MI) {
+  SmallVector<MCInst, 4> MCInsts;
+  const MachineOperand &MO = MI->getOperand(0);
+  assert(MO.isImm() && "CPRESTORE's operand must be an immediate.");
+  int64_t Offset = MO.getImm();
+
+  if (OutStreamer.hasRawTextSupport()) {
+    // output assembly
+    if (!isInt<16>(Offset)) {
+      EmitInstrWithMacroNoAT(MI);
+      return;
+    }
+    MCInst TmpInst0;
+    MCInstLowering.Lower(MI, TmpInst0);
+    OutStreamer.emitInstruction(TmpInst0, getSubtargetInfo());
+  } else {
+    // output elf
+    MCInstLowering.LowerCPRESTORE(Offset, MCInsts);
+
+    for (SmallVector<MCInst, 4>::iterator I = MCInsts.begin();
+         I != MCInsts.end(); ++I)
+      OutStreamer.emitInstruction(*I, getSubtargetInfo());
+
+    return;
+  }
+}
+#endif

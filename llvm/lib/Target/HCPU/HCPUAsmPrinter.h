@@ -32,8 +32,6 @@ class raw_ostream;
 
 class LLVM_LIBRARY_VISIBILITY HCPUAsmPrinter : public AsmPrinter {
 
-  void EmitInstrWithMacroNoAT(const MachineInstr *MI);
-
 private:
 
   // lowerOperand - Convert a MachineOperand into the equivalent MCOperand.
@@ -73,6 +71,12 @@ public:
 
     // tblgen'erated function.
   bool lowerPseudoInstExpansion(const MachineInstr *MI, MCInst &Inst);
+
+  #ifdef ENABLE_GPRESTORE
+  void emitPseudoCPRestore(MCStreamer &OutStreamer,
+                           const MachineInstr *MI);
+  void EmitInstrWithMacroNoAT(const MachineInstr *MI) 
+#endif
 };
 }
 

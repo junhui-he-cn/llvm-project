@@ -27,6 +27,9 @@ void initializeHCPUDAGToDAGISelLegacyPass(PassRegistry &);
 FunctionPass *createHCPULongBranchPass(HCPUTargetMachine &TM);
 FunctionPass *createHCPUDelJmpPass(HCPUTargetMachine &TM);
 FunctionPass *createHCPUDelaySlotFillerPass(HCPUTargetMachine &TM);
+#ifdef ENABLE_GPRESTORE
+  FunctionPass *createHCPUEmitGPRestorePass(HCPUTargetMachine &TM);
+#endif
 } // namespace llvm
 
 #endif

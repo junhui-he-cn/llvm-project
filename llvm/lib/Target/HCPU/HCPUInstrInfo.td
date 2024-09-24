@@ -899,3 +899,33 @@ def : Pat<(HCPUTailCall (iPTR tglobaladdr:$dst)),
               (TAILCALL tglobaladdr:$dst)>;
 def : Pat<(HCPUTailCall (iPTR texternalsym:$dst)),
               (TAILCALL texternalsym:$dst)>;
+
+
+// Exception handling related node and instructions.
+// The conversion sequence is:
+// ISD::EH_RETURN -> HCPUISD::EH_RETURN ->
+// HCPUeh_return -> (stack change + indirect branch)
+//
+// HCPUeh_return takes the place of regular return instruction
+// but takes two arguments (V1, V0) which are used for storing
+// the offset and return address respectively.
+def SDT_HCPUEHRET : SDTypeProfile<0, 2, [SDTCisInt<0>, SDTCisPtrTy<1>]>;
+
+def HCPUehret : SDNode<"HCPUISD::EH_RETURN", SDT_HCPUEHRET,
+                      [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+let Uses = [V0, V1], isTerminator = 1, isReturn = 1, isBarrier = 1 in {
+  def HCPUeh_return32 : HCPUPseudo<(outs), (ins GPROut:$spoff, GPROut:$dst), "",
+                                [(HCPUehret GPROut:$spoff, GPROut:$dst)]>;
+}
+
+class IntrinArithLogicR<bits<8> op, string instr_asm, SDPatternOperator OpNode,
+                  InstrItinClass itin, RegisterClass RC, bit isComm = 0>:
+  FA<op, (outs GPROut:$ra), (ins RC:$rb, RC:$rc),
+     !strconcat(instr_asm, "\t$ra, $rb, $rc"),
+     [(set GPROut:$ra, (OpNode RC:$rb, RC:$rc))], itin> {
+  let shamt = 0;
+  let isCommutable = isComm;	// e.g. add rb rc =  add rc rb
+  let isReMaterializable = 1;
+}
+def GCD : IntrinArithLogicR<0x60, "gcd", int_hcpu_gcd, IIAlu, CPURegs, 1>;

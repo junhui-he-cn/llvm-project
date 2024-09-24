@@ -224,6 +224,9 @@ protected:
                              const SDNode *CallNode,
                              std::vector<ArgListEntry> &FuncArgs);
 
+    /// Return the function that analyzes variable argument list functions.
+    llvm::CCAssignFn *varArgFn() const;
+
   private:
     /// Return the type of the register which is used to pass an argument or
     /// return a value. This function returns f64 if the argument is an i64
@@ -306,6 +309,17 @@ private:
                       bool isVarArg,
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
                       LLVMContext &Context) const override;
+
+  SDValue lowerVASTART(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerADD(SDValue Op, SelectionDAG &DAG) const;
+  /// writeVarArgRegs - Write variable function arguments passed in registers
+  /// to the stack. Also create a stack frame object for the first variable
+  /// argument.
+  void writeVarArgRegs(std::vector<SDValue> &OutChains, const HCPUCC &CC,
+                       SDValue Chain, const SDLoc &DL, SelectionDAG &DAG) const;
 };
 const HCPUTargetLowering *
 createHCPUSETargetLowering(const HCPUTargetMachine &TM,
