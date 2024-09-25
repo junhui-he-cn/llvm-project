@@ -188,6 +188,7 @@ class JumpFR<bits<8> op, string instr_asm, RegisterClass RC> :
     !strconcat(instr_asm, "\t$ra"), [(brind RC:$ra)], IIBranch> {
   let rb = 0;
   let imm16 = 0;
+  let DecoderMethod = "DecodeJumpFR";
 }
 
 class RetBase<RegisterClass RC> : JumpFR<0x3c, "ret", RC> {
@@ -929,3 +930,4 @@ class IntrinArithLogicR<bits<8> op, string instr_asm, SDPatternOperator OpNode,
   let isReMaterializable = 1;
 }
 def GCD : IntrinArithLogicR<0x60, "gcd", int_hcpu_gcd, IIAlu, CPURegs, 1>;
+

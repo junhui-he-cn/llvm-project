@@ -15,6 +15,7 @@ tablegen(LLVM HCPUGenCallingConv.inc -gen-callingconv)
 tablegen(LLVM HCPUGenCodeEmitter.inc -gen-emitter)
 tablegen(LLVM HCPUGenMCCodeEmitter.inc -gen-emitter)
 tablegen(LLVM HCPUGenAsmWriter.inc -gen-asm-writer)
+tablegen(LLVM HCPUGenDisassemblerTables.inc -gen-disassembler)
 
 # HCPUCommonTableGen must be defined
 add_public_tablegen_target(HCPUCommonTableGen)
@@ -46,6 +47,7 @@ add_llvm_target(HCPUCodeGen
   HCPUDesc
   HCPUInfo
   HCPUAsmPrinter
+  HCPUDisassembler
   Analysis
   AsmPrinter
   CodeGen
@@ -63,3 +65,4 @@ add_llvm_target(HCPUCodeGen
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
 add_subdirectory(InstPrinter)
+add_subdirectory(Disassembler)
