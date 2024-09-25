@@ -57,7 +57,7 @@ class HCPUInst<dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Format A instruction class in Cpu0 : <|opcode|ra|rb|rc|cx|>
+// Format A instruction class in HCPU : <|opcode|ra|rb|rc|cx|>
 //===----------------------------------------------------------------------===//
 
 class FA<bits<8> op, dag outs, dag ins, string asmstr,
@@ -77,7 +77,7 @@ class FA<bits<8> op, dag outs, dag ins, string asmstr,
 }
 
 //===----------------------------------------------------------------------===//
-// Format L instruction class in Cpu0 : <|opcode|ra|rb|cx|>
+// Format L instruction class in HCPU : <|opcode|ra|rb|cx|>
 //===----------------------------------------------------------------------===//
 
 class FL<bits<8> op, dag outs, dag ins, string asmstr, list<dag> pattern,
@@ -94,7 +94,7 @@ class FL<bits<8> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Format J instruction class in Cpu0 : <|opcode|address|>
+// Format J instruction class in HCPU : <|opcode|address|>
 //===----------------------------------------------------------------------===//
 
 class FJ<bits<8> op, dag outs, dag ins, string asmstr, list<dag> pattern,
@@ -117,4 +117,13 @@ class HCPUPseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
 class PseudoSE<dag outs, dag ins, list<dag> pattern,
                InstrItinClass itin = IIPseudo> :
   HCPUPseudo<outs, ins, "", pattern> {
+}
+
+// Pseudo-instructions for alternate assembly syntax (never used by codegen).
+// These are aliases that require C++ handling to convert to the target
+// instruction, while InstAliases can be handled directly by tblgen.
+class HCPUAsmPseudoInst<dag outs, dag ins, string asmstr>:
+  HCPUInst<outs, ins, asmstr, [], IIPseudo, Pseudo> {
+  let isPseudo = 1;
+  let Pattern = [];
 }

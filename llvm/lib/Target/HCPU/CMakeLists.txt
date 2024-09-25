@@ -1,5 +1,8 @@
 add_llvm_component_group(HCPU)
 
+set(LLVM_TARGET_DEFINITIONS HCPUAsm.td)
+tablegen(LLVM HCPUGenAsmMatcher.inc -gen-asm-matcher)
+
 set(LLVM_TARGET_DEFINITIONS HCPUOther.td)
 
 # Generate HCPUGenRegisterInfo.inc and HCPUGenInstrInfo.inc which included by 
@@ -48,6 +51,7 @@ add_llvm_target(HCPUCodeGen
   HCPUInfo
   HCPUAsmPrinter
   HCPUDisassembler
+  HCPUAsmParser
   Analysis
   AsmPrinter
   CodeGen
@@ -66,3 +70,4 @@ add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
 add_subdirectory(InstPrinter)
 add_subdirectory(Disassembler)
+add_subdirectory(AsmParser)

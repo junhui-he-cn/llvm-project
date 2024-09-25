@@ -15,6 +15,17 @@ include "HCPUSchedule.td"
 include "HCPUInstrInfo.td"
 include "HCPUCallingConv.td"
 
+def HCPUAsmParser : AsmParser {
+  let ShouldEmitMatchRegisterName = 0;
+}
+
+def HCPUAsmParserVariant : AsmParserVariant {
+  int Variant = 0;
+
+  // Recognize hard coded registers.
+  string RegisterPrefix = "$";
+}
+
 def HCPUInstrInfo : InstrInfo;
 //===----------------------------------------------------------------------===//
 // HCPU processors supported.
@@ -27,6 +38,8 @@ def HCPUInstrInfo : InstrInfo;
 def HCPU : Target {
 // def HCPUInstrInfo : InstrInfo as before.
   let InstructionSet = HCPUInstrInfo;
+  let AssemblyParsers = [HCPUAsmParser];
+  let AssemblyParserVariants = [HCPUAsmParserVariant];
 }
 
 def : ProcessorModel<"generic", NoSchedModel, []>;

@@ -86,10 +86,17 @@ def simm16 : Operand<i32> {
   let DecoderMethod = "DecodeSimm16";
 }
 
+
+def HCPUMemAsmOperand : AsmOperandClass {
+  let Name = "Mem";
+  let ParserMethod = "parseMemOperand";
+}
+
 def mem : Operand<iPTR> {
   let PrintMethod = "printMemOperand";
   let MIOperandInfo = (ops GPROut, simm16);
   let EncoderMethod = "getMemEncoding";
+  let ParserMatchClass = HCPUMemAsmOperand;
 }
 
 def mem_ea : Operand<iPTR> {
@@ -931,3 +938,23 @@ class IntrinArithLogicR<bits<8> op, string instr_asm, SDPatternOperator OpNode,
 }
 def GCD : IntrinArithLogicR<0x60, "gcd", int_hcpu_gcd, IIAlu, CPURegs, 1>;
 
+
+//===----------------------------------------------------------------------===//
+// Pseudo Instruction definition
+//===----------------------------------------------------------------------===//
+
+
+class LoadImm32< string instr_asm, Operand Od, RegisterClass RC> :
+  HCPUAsmPseudoInst<(outs RC:$ra), (ins Od:$imm32),
+                     !strconcat(instr_asm, "\t$ra, $imm32")> ;
+def LoadImm32Reg : LoadImm32<"li", shamt, GPROut>;
+
+class LoadAddress<string instr_asm, Operand MemOpnd, RegisterClass RC> :
+  HCPUAsmPseudoInst<(outs RC:$ra), (ins MemOpnd:$addr),
+                     !strconcat(instr_asm, "\t$ra, $addr")> ;
+def LoadAddr32Reg : LoadAddress<"la", mem, GPROut>;
+
+class LoadAddressImm<string instr_asm, Operand Od, RegisterClass RC> :
+  HCPUAsmPseudoInst<(outs RC:$ra), (ins Od:$imm32),
+                     !strconcat(instr_asm, "\t$ra, $imm32")> ;
+def LoadAddr32Imm : LoadAddressImm<"la", shamt, GPROut>;
