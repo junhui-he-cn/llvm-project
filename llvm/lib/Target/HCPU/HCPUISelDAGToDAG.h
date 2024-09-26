@@ -69,6 +69,9 @@ private:
   virtual void processFunctionAfterISel(MachineFunction &MF) = 0;
 
   SDNode *getGlobalBaseReg();
+
+  bool SelectInlineAsmMemoryOperand(const SDValue &Op, InlineAsm::ConstraintCode ConstraintID,
+                                    std::vector<SDValue> &OutOps) override;
 };
 
 class HCPUDAGToDAGISelLegacy : public SelectionDAGISelLegacy {

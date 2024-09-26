@@ -171,6 +171,22 @@ SDNode *HCPUDAGToDAGISel::getGlobalBaseReg() {
       .getNode();
 }
 
+// inlineasm begin
+bool HCPUDAGToDAGISel::
+SelectInlineAsmMemoryOperand(const SDValue &Op,  InlineAsm::ConstraintCode ConstraintID,
+                             std::vector<SDValue> &OutOps) {
+  // All memory constraints can at least accept raw pointers.
+  switch(ConstraintID) {
+  default:
+    llvm_unreachable("Unexpected asm memory constraint");
+  case InlineAsm::ConstraintCode::m:
+    OutOps.push_back(Op);
+    return false;
+  }
+  return true;
+}
+// inlineasm end
+
 char HCPUDAGToDAGISelLegacy::ID = 0;
 
 HCPUDAGToDAGISelLegacy::HCPUDAGToDAGISelLegacy(
