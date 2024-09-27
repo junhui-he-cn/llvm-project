@@ -134,9 +134,22 @@ HCPUAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
       // HCPUFixupKinds.h.
       //
       // name                        offset  bits  flags
-      {"fixup_HCPU_32", 0, 32, 0},      {"fixup_HCPU_HI16", 0, 16, 0},
-      {"fixup_HCPU_LO16", 0, 16, 0},    {"fixup_HCPU_GPREL16", 0, 16, 0},
-      {"fixup_HCPU_GOT", 0, 16, 0},     {"fixup_HCPU_GOT_HI16", 0, 16, 0},
+      {"fixup_HCPU_32", 0, 32, 0},
+      {"fixup_HCPU_HI16", 0, 16, 0},
+      {"fixup_HCPU_LO16", 0, 16, 0},
+      {"fixup_HCPU_GPREL16", 0, 16, 0},
+      {"fixup_HCPU_GOT", 0, 16, 0},
+      {"fixup_HCPU_PC16", 0, 16, MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_HCPU_PC24", 0, 24, JSUBReloRec},
+      {"fixup_HCPU_CALL16", 0, 16, 0},
+      {"fixup_HCPU_TLSGD", 0, 16, 0},
+      {"fixup_HCPU_GOTTP", 0, 16, 0},
+      {"fixup_HCPU_TP_HI", 0, 16, 0},
+      {"fixup_HCPU_TP_LO", 0, 16, 0},
+      {"fixup_HCPU_TLSLDM", 0, 16, 0},
+      {"fixup_HCPU_DTP_HI", 0, 16, 0},
+      {"fixup_HCPU_DTP_LO", 0, 16, 0},
+      {"fixup_HCPU_GOT_HI16", 0, 16, 0},
       {"fixup_HCPU_GOT_LO16", 0, 16, 0}};
 
   if (Kind < FirstTargetFixupKind)

@@ -350,6 +350,48 @@ private:
   bool isLegalAddressingMode(const DataLayout &DL, const AddrMode &AM, Type *Ty,
                              unsigned AS,
                              Instruction *I = nullptr) const override;
+
+  /// If a physical register, this returns the register that receives the
+  /// exception address on entry to an EH pad.
+  Register
+  getExceptionPointerRegister(const Constant *PersonalityFn) const override {
+    return HCPU::A0;
+  }
+
+  /// If a physical register, this returns the register that receives the
+  /// exception typeid on entry to a landing pad.
+  Register
+  getExceptionSelectorRegister(const Constant *PersonalityFn) const override {
+    return HCPU::A1;
+  }
+
+  SDValue lowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;
+
+  MachineBasicBlock *
+  EmitInstrWithCustomInserter(MachineInstr &MI,
+                              MachineBasicBlock *MBB) const override;
+  SDValue lowerATOMIC_FENCE(SDValue Op, SelectionDAG &DAG) const;
+  bool shouldInsertFencesForAtomic(const Instruction *I) const override {
+    return true;
+  }
+
+  /// Emit a sign-extension using shl/sra appropriately.
+  MachineBasicBlock *emitSignExtendToI32InReg(MachineInstr &MI,
+                                              MachineBasicBlock *BB,
+                                              unsigned Size, unsigned DstReg,
+                                              unsigned SrcRec) const;
+  MachineBasicBlock *emitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
+                                      unsigned Size, unsigned BinOpcode,
+                                      bool Nand = false) const;
+  MachineBasicBlock *emitAtomicBinaryPartword(MachineInstr &MI,
+                                              MachineBasicBlock *BB,
+                                              unsigned Size, unsigned BinOpcode,
+                                              bool Nand = false) const;
+  MachineBasicBlock *emitAtomicCmpSwap(MachineInstr &MI, MachineBasicBlock *BB,
+                                       unsigned Size) const;
+  MachineBasicBlock *emitAtomicCmpSwapPartword(MachineInstr &MI,
+                                               MachineBasicBlock *BB,
+                                               unsigned Size) const;
 };
 const HCPUTargetLowering *
 createHCPUSETargetLowering(const HCPUTargetMachine &TM,

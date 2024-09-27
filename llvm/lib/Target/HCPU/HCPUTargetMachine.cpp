@@ -143,6 +143,8 @@ public:
   bool addInstSelector() override;
 
   void addPreEmitPass() override;
+
+  void addIRPasses() override;
 };
 } // namespace
 
@@ -155,6 +157,11 @@ TargetPassConfig *HCPUTargetMachine::createPassConfig(PassManagerBase &PM) {
 bool HCPUPassConfig::addInstSelector() {
   addPass(createHCPUSEISelDag(getHCPUTargetMachine(), getOptLevel()));
   return false;
+}
+
+void HCPUPassConfig::addIRPasses() {
+  TargetPassConfig::addIRPasses();
+  addPass(createAtomicExpandLegacyPass());
 }
 
 #ifdef ENABLE_GPRESTORE

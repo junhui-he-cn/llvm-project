@@ -56,6 +56,27 @@ enum Fixups {
   // resulting in - R_HCPU_CALL16.
   fixup_HCPU_CALL16,
 
+      // resulting in - R_HCPU_TLS_GD.
+    fixup_HCPU_TLSGD,
+
+    // resulting in - R_HCPU_TLS_GOTTPREL.
+    fixup_HCPU_GOTTPREL,
+
+    // resulting in - R_HCPU_TLS_TPREL_HI16.
+    fixup_HCPU_TP_HI,
+
+    // resulting in - R_HCPU_TLS_TPREL_LO16.
+    fixup_HCPU_TP_LO,
+
+    // resulting in - R_HCPU_TLS_LDM.
+    fixup_HCPU_TLSLDM,
+
+    // resulting in - R_HCPU_TLS_DTP_HI16.
+    fixup_HCPU_DTP_HI,
+
+    // resulting in - R_HCPU_TLS_DTP_LO16.
+    fixup_HCPU_DTP_LO,
+
   // Marker
   LastTargetFixupKind,
   NumTargetFixupKinds = LastTargetFixupKind - FirstTargetFixupKind

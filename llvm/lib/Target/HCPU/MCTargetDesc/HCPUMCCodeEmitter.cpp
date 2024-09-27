@@ -141,6 +141,27 @@ unsigned HCPUMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
     case HCPUMCExpr::CEK_GOT_CALL:
       FixupKind = HCPU::fixup_HCPU_CALL16;
       break;
+    case HCPUMCExpr::CEK_TLSGD:
+      FixupKind = HCPU::fixup_HCPU_TLSGD;
+      break;
+    case HCPUMCExpr::CEK_TLSLDM:
+      FixupKind = HCPU::fixup_HCPU_TLSLDM;
+      break;
+    case HCPUMCExpr::CEK_DTP_HI:
+      FixupKind = HCPU::fixup_HCPU_DTP_HI;
+      break;
+    case HCPUMCExpr::CEK_DTP_LO:
+      FixupKind = HCPU::fixup_HCPU_DTP_LO;
+      break;
+    case HCPUMCExpr::CEK_GOTTPREL:
+      FixupKind = HCPU::fixup_HCPU_GOTTPREL;
+      break;
+    case HCPUMCExpr::CEK_TP_HI:
+      FixupKind = HCPU::fixup_HCPU_TP_HI;
+      break;
+    case HCPUMCExpr::CEK_TP_LO:
+      FixupKind = HCPU::fixup_HCPU_TP_LO;
+      break;
     } // switch
     Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind(FixupKind)));
     return 0;

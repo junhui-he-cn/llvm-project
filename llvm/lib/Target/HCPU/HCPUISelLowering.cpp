@@ -66,6 +66,8 @@ const char *HCPUTargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "HCPUISD::DivRemU";
   case HCPUISD::Wrapper:
     return "HCPUISD::Wrapper";
+  case HCPUISD::Sync:
+    return "HCPUISD::Sync";
   default:
     return NULL;
   }
@@ -134,6 +136,13 @@ HCPUTargetLowering::HCPUTargetLowering(const HCPUTargetMachine &TM,
 
   setOperationAction(ISD::EH_RETURN, MVT::Other, Custom);
   setOperationAction(ISD::ADD, MVT::i32, Custom);
+
+  setOperationAction(ISD::GlobalTLSAddress, MVT::i32, Custom);
+
+  setOperationAction(ISD::ATOMIC_LOAD, MVT::i32, Expand);
+  setOperationAction(ISD::ATOMIC_LOAD, MVT::i64, Expand);
+  setOperationAction(ISD::ATOMIC_STORE, MVT::i32, Expand);
+  setOperationAction(ISD::ATOMIC_STORE, MVT::i64, Expand);
 
   setTargetDAGCombine(ISD::SDIVREM);
   setTargetDAGCombine(ISD::UDIVREM);
@@ -502,6 +511,10 @@ SDValue HCPUTargetLowering::LowerOperation(SDValue Op,
     return lowerEH_RETURN(Op, DAG);
   case ISD::ADD:
     return lowerADD(Op, DAG);
+  case ISD::GlobalTLSAddress:
+    return lowerGlobalTLSAddress(Op, DAG);
+  case ISD::ATOMIC_FENCE:
+    return lowerATOMIC_FENCE(Op, DAG);
   }
   return SDValue();
 }
@@ -1334,8 +1347,8 @@ void HCPUTargetLowering::writeVarArgRegs(std::vector<SDValue> &OutChains,
   }
 }
 
-SDValue HCPUTargetLowering::
-lowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
+SDValue HCPUTargetLowering::lowerFRAMEADDR(SDValue Op,
+                                           SelectionDAG &DAG) const {
   // check the depth
   assert((cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue() == 0) &&
          "Frame address can only be determined for current frame.");
@@ -1344,8 +1357,7 @@ lowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
   MFI.setFrameAddressIsTaken(true);
   EVT VT = Op.getValueType();
   SDLoc DL(Op);
-  SDValue FrameAddr = DAG.getCopyFromReg(
-      DAG.getEntryNode(), DL, HCPU::FP, VT);
+  SDValue FrameAddr = DAG.getCopyFromReg(DAG.getEntryNode(), DL, HCPU::FP, VT);
   return FrameAddr;
 }
 
@@ -1373,15 +1385,15 @@ SDValue HCPUTargetLowering::lowerRETURNADDR(SDValue Op,
 // generated from __builtin_eh_return (offset, handler)
 // The effect of this is to adjust the stack pointer by "offset"
 // and then branch to "handler".
-SDValue HCPUTargetLowering::lowerEH_RETURN(SDValue Op, SelectionDAG &DAG)
-                                                                     const {
+SDValue HCPUTargetLowering::lowerEH_RETURN(SDValue Op,
+                                           SelectionDAG &DAG) const {
   MachineFunction &MF = DAG.getMachineFunction();
   HCPUFunctionInfo *HCPUFI = MF.getInfo<HCPUFunctionInfo>();
 
   HCPUFI->setCallsEhReturn();
-  SDValue Chain     = Op.getOperand(0);
-  SDValue Offset    = Op.getOperand(1);
-  SDValue Handler   = Op.getOperand(2);
+  SDValue Chain = Op.getOperand(0);
+  SDValue Offset = Op.getOperand(1);
+  SDValue Handler = Op.getOperand(2);
   SDLoc DL(Op);
   EVT Ty = MVT::i32;
 
@@ -1398,10 +1410,10 @@ SDValue HCPUTargetLowering::lowerEH_RETURN(SDValue Op, SelectionDAG &DAG)
 }
 
 SDValue HCPUTargetLowering::lowerADD(SDValue Op, SelectionDAG &DAG) const {
-  if (Op->getOperand(0).getOpcode() != ISD::FRAMEADDR
-      || cast<ConstantSDNode>
-        (Op->getOperand(0).getOperand(0))->getZExtValue() != 0
-      || Op->getOperand(1).getOpcode() != ISD::FRAME_TO_ARGS_OFFSET)
+  if (Op->getOperand(0).getOpcode() != ISD::FRAMEADDR ||
+      cast<ConstantSDNode>(Op->getOperand(0).getOperand(0))->getZExtValue() !=
+          0 ||
+      Op->getOperand(1).getOpcode() != ISD::FRAME_TO_ARGS_OFFSET)
     return SDValue();
 
   MachineFunction &MF = DAG.getMachineFunction();
@@ -1417,20 +1429,20 @@ SDValue HCPUTargetLowering::lowerADD(SDValue Op, SelectionDAG &DAG) const {
 
 /// getConstraintType - Given a constraint letter, return the type of
 /// constraint it is for this target.
-HCPUTargetLowering::ConstraintType 
-HCPUTargetLowering::getConstraintType(StringRef Constraint) const
-{
+HCPUTargetLowering::ConstraintType
+HCPUTargetLowering::getConstraintType(StringRef Constraint) const {
   // HCPU specific constraints
   // GCC config/mips/constraints.md
   // 'c' : A register suitable for use in an indirect
   //       jump. This will always be $t9 for -mabicalls.
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
-      default : break;
-      case 'c':
-        return C_RegisterClass;
-      case 'R':
-        return C_Memory;
+    default:
+      break;
+    case 'c':
+      return C_RegisterClass;
+    case 'R':
+      return C_Memory;
     }
   }
   return TargetLowering::getConstraintType(Constraint);
@@ -1444,8 +1456,8 @@ HCPUTargetLowering::getSingleConstraintMatchWeight(
     AsmOperandInfo &info, const char *constraint) const {
   ConstraintWeight weight = CW_Invalid;
   Value *CallOperandVal = info.CallOperandVal;
-    // If we don't have a value, we can't do a match,
-    // but allow it at the lowest weight.
+  // If we don't have a value, we can't do a match,
+  // but allow it at the lowest weight.
   if (!CallOperandVal)
     return CW_Default;
   Type *type = CallOperandVal->getType();
@@ -1479,9 +1491,9 @@ HCPUTargetLowering::getSingleConstraintMatchWeight(
 /// into non-numeric and numeric parts (Prefix and Reg). The first boolean flag
 /// that is returned indicates whether parsing was successful. The second flag
 /// is true if the numeric part exists.
-static std::pair<bool, bool>
-parsePhysicalReg(const StringRef &C, std::string &Prefix,
-                 unsigned long long &Reg) {
+static std::pair<bool, bool> parsePhysicalReg(const StringRef &C,
+                                              std::string &Prefix,
+                                              unsigned long long &Reg) {
   if (C.front() != '{' || C.back() != '}')
     return std::make_pair(false, false);
 
@@ -1500,8 +1512,9 @@ parsePhysicalReg(const StringRef &C, std::string &Prefix,
                         true);
 }
 
-std::pair<unsigned, const TargetRegisterClass *> HCPUTargetLowering::
-parseRegForInlineAsmConstraint(const StringRef &C, MVT VT) const {
+std::pair<unsigned, const TargetRegisterClass *>
+HCPUTargetLowering::parseRegForInlineAsmConstraint(const StringRef &C,
+                                                   MVT VT) const {
   const TargetRegisterClass *RC;
   std::string Prefix;
   unsigned long long Reg;
@@ -1513,7 +1526,7 @@ parseRegForInlineAsmConstraint(const StringRef &C, MVT VT) const {
   if (!R.second)
     return std::make_pair(0U, nullptr);
 
- // Parse $0-$15.
+  // Parse $0-$15.
   assert(Prefix == "$");
   RC = getRegClassFor((VT == MVT::Other) ? MVT::i32 : VT);
 
@@ -1527,8 +1540,7 @@ parseRegForInlineAsmConstraint(const StringRef &C, MVT VT) const {
 std::pair<unsigned, const TargetRegisterClass *>
 HCPUTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
                                                  StringRef Constraint,
-                                                 MVT VT) const
-{
+                                                 MVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':
@@ -1538,7 +1550,7 @@ HCPUTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
       if (VT == MVT::i64)
         return std::make_pair(0U, &HCPU::CPURegsRegClass);
       // This will generate an error message
-      return std::make_pair(0u, static_cast<const TargetRegisterClass*>(0));
+      return std::make_pair(0u, static_cast<const TargetRegisterClass *>(0));
     case 'c': // register suitable for indirect jump
       if (VT == MVT::i32)
         return std::make_pair((unsigned)HCPU::T9, &HCPU::CPURegsRegClass);
@@ -1558,18 +1570,20 @@ HCPUTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
 /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
 /// vector.  If it is invalid, don't add anything to Ops.
 void HCPUTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
-                                                     StringRef Constraint,
-                                                     std::vector<SDValue>&Ops,
-                                                     SelectionDAG &DAG) const {
+                                                      StringRef Constraint,
+                                                      std::vector<SDValue> &Ops,
+                                                      SelectionDAG &DAG) const {
   SDLoc DL(Op);
   SDValue Result;
 
   // Only support length 1 constraints for now.
-  if (Constraint.size() > 1) return;
+  if (Constraint.size() > 1)
+    return;
 
   char ConstraintLetter = Constraint[0];
   switch (ConstraintLetter) {
-  default: break; // This will fall through to the generic implementation
+  default:
+    break;  // This will fall through to the generic implementation
   case 'I': // Signed 16 bit constant
     // If this fails, the parent routine will give an error
     if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
@@ -1605,7 +1619,7 @@ void HCPUTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
     if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
       EVT Type = Op.getValueType();
       int64_t Val = C->getSExtValue();
-      if ((isInt<32>(Val)) && ((Val & 0xffff) == 0)){
+      if ((isInt<32>(Val)) && ((Val & 0xffff) == 0)) {
         Result = DAG.getTargetConstant(Val, DL, Type);
         break;
       }
@@ -1653,7 +1667,8 @@ void HCPUTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
 
 bool HCPUTargetLowering::isLegalAddressingMode(const DataLayout &DL,
                                                const AddrMode &AM, Type *Ty,
-                                               unsigned AS, Instruction *I) const {
+                                               unsigned AS,
+                                               Instruction *I) const {
   // No global is ever allowed as a base.
   if (AM.BaseGV)
     return false;
@@ -1670,4 +1685,633 @@ bool HCPUTargetLowering::isLegalAddressingMode(const DataLayout &DL,
   }
 
   return true;
+}
+
+SDValue HCPUTargetLowering::lowerGlobalTLSAddress(SDValue Op,
+                                                  SelectionDAG &DAG) const {
+  // If the relocation model is PIC, use the General Dynamic TLS Model or
+  // Local Dynamic TLS model, otherwise use the Initial Exec or
+  // Local Exec TLS Model.
+
+  GlobalAddressSDNode *GA = cast<GlobalAddressSDNode>(Op);
+  if (DAG.getTarget().Options.EmulatedTLS)
+    return LowerToTLSEmulatedModel(GA, DAG);
+
+  SDLoc DL(GA);
+  const GlobalValue *GV = GA->getGlobal();
+  EVT PtrVT = getPointerTy(DAG.getDataLayout());
+
+  TLSModel::Model model = getTargetMachine().getTLSModel(GV);
+
+  if (model == TLSModel::GeneralDynamic || model == TLSModel::LocalDynamic) {
+    // General Dynamic and Local Dynamic TLS Model.
+    unsigned Flag = (model == TLSModel::LocalDynamic) ? HCPUII::MO_TLSLDM
+                                                      : HCPUII::MO_TLSGD;
+
+    SDValue TGA = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, Flag);
+    SDValue Argument =
+        DAG.getNode(HCPUISD::Wrapper, DL, PtrVT, getGlobalReg(DAG, PtrVT), TGA);
+    unsigned PtrSize = PtrVT.getSizeInBits();
+    IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
+
+    SDValue TlsGetAddr = DAG.getExternalSymbol("__tls_get_addr", PtrVT);
+
+    ArgListTy Args;
+    ArgListEntry Entry;
+    Entry.Node = Argument;
+    Entry.Ty = PtrTy;
+    Args.push_back(Entry);
+
+    TargetLowering::CallLoweringInfo CLI(DAG);
+    CLI.setDebugLoc(DL)
+        .setChain(DAG.getEntryNode())
+        .setCallee(CallingConv::C, PtrTy, TlsGetAddr, std::move(Args));
+    std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
+
+    SDValue Ret = CallResult.first;
+
+    if (model != TLSModel::LocalDynamic)
+      return Ret;
+
+    SDValue TGAHi =
+        DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, HCPUII::MO_DTP_HI);
+    SDValue Hi = DAG.getNode(HCPUISD::Hi, DL, PtrVT, TGAHi);
+    SDValue TGALo =
+        DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, HCPUII::MO_DTP_LO);
+    SDValue Lo = DAG.getNode(HCPUISD::Lo, DL, PtrVT, TGALo);
+    SDValue Add = DAG.getNode(ISD::ADD, DL, PtrVT, Hi, Ret);
+    return DAG.getNode(ISD::ADD, DL, PtrVT, Add, Lo);
+  }
+
+  SDValue Offset;
+  if (model == TLSModel::InitialExec) {
+    // Initial Exec TLS Model
+    SDValue TGA =
+        DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, HCPUII::MO_GOTTPREL);
+    TGA =
+        DAG.getNode(HCPUISD::Wrapper, DL, PtrVT, getGlobalReg(DAG, PtrVT), TGA);
+    Offset =
+        DAG.getLoad(PtrVT, DL, DAG.getEntryNode(), TGA, MachinePointerInfo());
+  } else {
+    // Local Exec TLS Model
+    assert(model == TLSModel::LocalExec);
+    SDValue TGAHi =
+        DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, HCPUII::MO_TP_HI);
+    SDValue TGALo =
+        DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, HCPUII::MO_TP_LO);
+    SDValue Hi = DAG.getNode(HCPUISD::Hi, DL, PtrVT, TGAHi);
+    SDValue Lo = DAG.getNode(HCPUISD::Lo, DL, PtrVT, TGALo);
+    Offset = DAG.getNode(ISD::ADD, DL, PtrVT, Hi, Lo);
+  }
+  return Offset;
+}
+
+MachineBasicBlock *
+HCPUTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
+                                                MachineBasicBlock *BB) const {
+  switch (MI.getOpcode()) {
+  default:
+    llvm_unreachable("Unexpected instr type to insert");
+  case HCPU::ATOMIC_LOAD_ADD_I8:
+    return emitAtomicBinaryPartword(MI, BB, 1, HCPU::ADDu);
+  case HCPU::ATOMIC_LOAD_ADD_I16:
+    return emitAtomicBinaryPartword(MI, BB, 2, HCPU::ADDu);
+  case HCPU::ATOMIC_LOAD_ADD_I32:
+    return emitAtomicBinary(MI, BB, 4, HCPU::ADDu);
+
+  case HCPU::ATOMIC_LOAD_AND_I8:
+    return emitAtomicBinaryPartword(MI, BB, 1, HCPU::AND);
+  case HCPU::ATOMIC_LOAD_AND_I16:
+    return emitAtomicBinaryPartword(MI, BB, 2, HCPU::AND);
+  case HCPU::ATOMIC_LOAD_AND_I32:
+    return emitAtomicBinary(MI, BB, 4, HCPU::AND);
+
+  case HCPU::ATOMIC_LOAD_OR_I8:
+    return emitAtomicBinaryPartword(MI, BB, 1, HCPU::OR);
+  case HCPU::ATOMIC_LOAD_OR_I16:
+    return emitAtomicBinaryPartword(MI, BB, 2, HCPU::OR);
+  case HCPU::ATOMIC_LOAD_OR_I32:
+    return emitAtomicBinary(MI, BB, 4, HCPU::OR);
+
+  case HCPU::ATOMIC_LOAD_XOR_I8:
+    return emitAtomicBinaryPartword(MI, BB, 1, HCPU::XOR);
+  case HCPU::ATOMIC_LOAD_XOR_I16:
+    return emitAtomicBinaryPartword(MI, BB, 2, HCPU::XOR);
+  case HCPU::ATOMIC_LOAD_XOR_I32:
+    return emitAtomicBinary(MI, BB, 4, HCPU::XOR);
+
+  case HCPU::ATOMIC_LOAD_NAND_I8:
+    return emitAtomicBinaryPartword(MI, BB, 1, 0, true);
+  case HCPU::ATOMIC_LOAD_NAND_I16:
+    return emitAtomicBinaryPartword(MI, BB, 2, 0, true);
+  case HCPU::ATOMIC_LOAD_NAND_I32:
+    return emitAtomicBinary(MI, BB, 4, 0, true);
+
+  case HCPU::ATOMIC_LOAD_SUB_I8:
+    return emitAtomicBinaryPartword(MI, BB, 1, HCPU::SUBu);
+  case HCPU::ATOMIC_LOAD_SUB_I16:
+    return emitAtomicBinaryPartword(MI, BB, 2, HCPU::SUBu);
+  case HCPU::ATOMIC_LOAD_SUB_I32:
+    return emitAtomicBinary(MI, BB, 4, HCPU::SUBu);
+
+  case HCPU::ATOMIC_SWAP_I8:
+    return emitAtomicBinaryPartword(MI, BB, 1, 0);
+  case HCPU::ATOMIC_SWAP_I16:
+    return emitAtomicBinaryPartword(MI, BB, 2, 0);
+  case HCPU::ATOMIC_SWAP_I32:
+    return emitAtomicBinary(MI, BB, 4, 0);
+
+  case HCPU::ATOMIC_CMP_SWAP_I8:
+    return emitAtomicCmpSwapPartword(MI, BB, 1);
+  case HCPU::ATOMIC_CMP_SWAP_I16:
+    return emitAtomicCmpSwapPartword(MI, BB, 2);
+  case HCPU::ATOMIC_CMP_SWAP_I32:
+    return emitAtomicCmpSwap(MI, BB, 4);
+  }
+}
+
+// This function also handles HCPU::ATOMIC_SWAP_I32 (when BinOpcode == 0), and
+// HCPU::ATOMIC_LOAD_NAND_I32 (when Nand == true)
+MachineBasicBlock *HCPUTargetLowering::emitAtomicBinary(
+    MachineInstr &MI, MachineBasicBlock *BB, unsigned Size, unsigned BinOpcode,
+    bool Nand) const {
+  assert((Size == 4) && "Unsupported size for EmitAtomicBinary.");
+
+  MachineFunction *MF = BB->getParent();
+  MachineRegisterInfo &RegInfo = MF->getRegInfo();
+  const TargetRegisterClass *RC = getRegClassFor(MVT::getIntegerVT(Size * 8));
+  const TargetInstrInfo *TII = Subtarget.getInstrInfo();
+  DebugLoc DL = MI.getDebugLoc();
+  unsigned LL, SC, AND, XOR, ZERO, BEQ;
+
+  LL = HCPU::LL;
+  SC = HCPU::SC;
+  AND = HCPU::AND;
+  XOR = HCPU::XOR;
+  ZERO = HCPU::ZERO;
+  BEQ = HCPU::BEQ;
+
+  unsigned OldVal = MI.getOperand(0).getReg();
+  unsigned Ptr = MI.getOperand(1).getReg();
+  unsigned Incr = MI.getOperand(2).getReg();
+
+  unsigned StoreVal = RegInfo.createVirtualRegister(RC);
+  unsigned AndRes = RegInfo.createVirtualRegister(RC);
+  unsigned AndRes2 = RegInfo.createVirtualRegister(RC);
+  unsigned Success = RegInfo.createVirtualRegister(RC);
+
+  // insert new blocks after the current block
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+  MachineBasicBlock *loopMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *exitMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineFunction::iterator It = ++BB->getIterator();
+  MF->insert(It, loopMBB);
+  MF->insert(It, exitMBB);
+
+  // Transfer the remainder of BB and its successor edges to exitMBB.
+  exitMBB->splice(exitMBB->begin(), BB,
+                  std::next(MachineBasicBlock::iterator(MI)), BB->end());
+  exitMBB->transferSuccessorsAndUpdatePHIs(BB);
+
+  //  thisMBB:
+  //    ...
+  //    fallthrough --> loopMBB
+  BB->addSuccessor(loopMBB);
+  loopMBB->addSuccessor(loopMBB);
+  loopMBB->addSuccessor(exitMBB);
+
+  //  loopMBB:
+  //    ll oldval, 0(ptr)
+  //    <binop> storeval, oldval, incr
+  //    sc success, storeval, 0(ptr)
+  //    beq success, $0, loopMBB
+  BB = loopMBB;
+  BuildMI(BB, DL, TII->get(LL), OldVal).addReg(Ptr).addImm(0);
+  if (Nand) {
+    //  and andres, oldval, incr
+    //  xor storeval, $0, andres
+    //  xor storeval2, $0, storeval
+    BuildMI(BB, DL, TII->get(AND), AndRes).addReg(OldVal).addReg(Incr);
+    BuildMI(BB, DL, TII->get(XOR), StoreVal).addReg(ZERO).addReg(AndRes);
+    BuildMI(BB, DL, TII->get(XOR), AndRes2).addReg(ZERO).addReg(AndRes);
+  } else if (BinOpcode) {
+    //  <binop> storeval, oldval, incr
+    BuildMI(BB, DL, TII->get(BinOpcode), StoreVal).addReg(OldVal).addReg(Incr);
+  } else {
+    StoreVal = Incr;
+  }
+  BuildMI(BB, DL, TII->get(SC), Success).addReg(StoreVal).addReg(Ptr).addImm(0);
+  BuildMI(BB, DL, TII->get(BEQ)).addReg(Success).addReg(ZERO).addMBB(loopMBB);
+
+  MI.eraseFromParent(); // The instruction is gone now.
+
+  return exitMBB;
+}
+
+MachineBasicBlock *HCPUTargetLowering::emitSignExtendToI32InReg(
+    MachineInstr &MI, MachineBasicBlock *BB, unsigned Size, unsigned DstReg,
+    unsigned SrcReg) const {
+  const TargetInstrInfo *TII = Subtarget.getInstrInfo();
+  DebugLoc DL = MI.getDebugLoc();
+
+  MachineFunction *MF = BB->getParent();
+  MachineRegisterInfo &RegInfo = MF->getRegInfo();
+  const TargetRegisterClass *RC = getRegClassFor(MVT::i32);
+  unsigned ScrReg = RegInfo.createVirtualRegister(RC);
+
+  assert(Size < 32);
+  int64_t ShiftImm = 32 - (Size * 8);
+
+  BuildMI(BB, DL, TII->get(HCPU::SHL), ScrReg).addReg(SrcReg).addImm(ShiftImm);
+  BuildMI(BB, DL, TII->get(HCPU::SRA), DstReg).addReg(ScrReg).addImm(ShiftImm);
+
+  return BB;
+}
+
+MachineBasicBlock *HCPUTargetLowering::emitAtomicBinaryPartword(
+    MachineInstr &MI, MachineBasicBlock *BB, unsigned Size, unsigned BinOpcode,
+    bool Nand) const {
+  assert((Size == 1 || Size == 2) &&
+         "Unsupported size for EmitAtomicBinaryPartial.");
+
+  MachineFunction *MF = BB->getParent();
+  MachineRegisterInfo &RegInfo = MF->getRegInfo();
+  const TargetRegisterClass *RC = getRegClassFor(MVT::i32);
+  const TargetInstrInfo *TII = Subtarget.getInstrInfo();
+  DebugLoc DL = MI.getDebugLoc();
+
+  unsigned Dest = MI.getOperand(0).getReg();
+  unsigned Ptr = MI.getOperand(1).getReg();
+  unsigned Incr = MI.getOperand(2).getReg();
+
+  unsigned AlignedAddr = RegInfo.createVirtualRegister(RC);
+  unsigned ShiftAmt = RegInfo.createVirtualRegister(RC);
+  unsigned Mask = RegInfo.createVirtualRegister(RC);
+  unsigned Mask2 = RegInfo.createVirtualRegister(RC);
+  unsigned Mask3 = RegInfo.createVirtualRegister(RC);
+  unsigned NewVal = RegInfo.createVirtualRegister(RC);
+  unsigned OldVal = RegInfo.createVirtualRegister(RC);
+  unsigned Incr2 = RegInfo.createVirtualRegister(RC);
+  unsigned MaskLSB2 = RegInfo.createVirtualRegister(RC);
+  unsigned PtrLSB2 = RegInfo.createVirtualRegister(RC);
+  unsigned MaskUpper = RegInfo.createVirtualRegister(RC);
+  unsigned AndRes = RegInfo.createVirtualRegister(RC);
+  unsigned BinOpRes = RegInfo.createVirtualRegister(RC);
+  unsigned BinOpRes2 = RegInfo.createVirtualRegister(RC);
+  unsigned MaskedOldVal0 = RegInfo.createVirtualRegister(RC);
+  unsigned StoreVal = RegInfo.createVirtualRegister(RC);
+  unsigned MaskedOldVal1 = RegInfo.createVirtualRegister(RC);
+  unsigned SrlRes = RegInfo.createVirtualRegister(RC);
+  unsigned Success = RegInfo.createVirtualRegister(RC);
+
+  // insert new blocks after the current block
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+  MachineBasicBlock *loopMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *sinkMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *exitMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineFunction::iterator It = ++BB->getIterator();
+
+  MF->insert(It, loopMBB);
+  MF->insert(It, sinkMBB);
+  MF->insert(It, exitMBB);
+
+  // Transfer the remainder of BB and its successor edges to exitMBB.
+  exitMBB->splice(exitMBB->begin(), BB,
+                  std::next(MachineBasicBlock::iterator(MI)), BB->end());
+  exitMBB->transferSuccessorsAndUpdatePHIs(BB);
+
+  BB->addSuccessor(loopMBB);
+  loopMBB->addSuccessor(loopMBB);
+  loopMBB->addSuccessor(sinkMBB);
+  sinkMBB->addSuccessor(exitMBB);
+
+  //  thisMBB:
+  //    addiu   masklsb2,$0,-4                # 0xfffffffc
+  //    and     alignedaddr,ptr,masklsb2
+  //    andi    ptrlsb2,ptr,3
+  //    sll     shiftamt,ptrlsb2,3
+  //    ori     maskupper,$0,255               # 0xff
+  //    sll     mask,maskupper,shiftamt
+  //    xor     mask2,$0,mask
+  //    xor     mask3,$0,mask2
+  //    sll     incr2,incr,shiftamt
+
+  int64_t MaskImm = (Size == 1) ? 255 : 65535;
+  BuildMI(BB, DL, TII->get(HCPU::ADDiu), MaskLSB2)
+    .addReg(HCPU::ZERO).addImm(-4);
+  BuildMI(BB, DL, TII->get(HCPU::AND), AlignedAddr)
+    .addReg(Ptr).addReg(MaskLSB2);
+  BuildMI(BB, DL, TII->get(HCPU::ANDi), PtrLSB2).addReg(Ptr).addImm(3);
+  if (Subtarget.isLittle()) {
+    BuildMI(BB, DL, TII->get(HCPU::SHL), ShiftAmt).addReg(PtrLSB2).addImm(3);
+  } else {
+    unsigned Off = RegInfo.createVirtualRegister(RC);
+    BuildMI(BB, DL, TII->get(HCPU::XORi), Off)
+      .addReg(PtrLSB2).addImm((Size == 1) ? 3 : 2);
+    BuildMI(BB, DL, TII->get(HCPU::SHL), ShiftAmt).addReg(Off).addImm(3);
+  }
+  BuildMI(BB, DL, TII->get(HCPU::ORi), MaskUpper)
+    .addReg(HCPU::ZERO).addImm(MaskImm);
+  BuildMI(BB, DL, TII->get(HCPU::SHLV), Mask)
+    .addReg(MaskUpper).addReg(ShiftAmt);
+  BuildMI(BB, DL, TII->get(HCPU::XOR), Mask2).addReg(HCPU::ZERO).addReg(Mask);
+  BuildMI(BB, DL, TII->get(HCPU::XOR), Mask3).addReg(HCPU::ZERO).addReg(Mask2);
+  BuildMI(BB, DL, TII->get(HCPU::SHLV), Incr2).addReg(Incr).addReg(ShiftAmt);
+
+  // atomic.load.binop
+  // loopMBB:
+  //   ll      oldval,0(alignedaddr)
+  //   binop   binopres,oldval,incr2
+  //   and     newval,binopres,mask
+  //   and     maskedoldval0,oldval,mask3
+  //   or      storeval,maskedoldval0,newval
+  //   sc      success,storeval,0(alignedaddr)
+  //   beq     success,$0,loopMBB
+
+  // atomic.swap
+  // loopMBB:
+  //   ll      oldval,0(alignedaddr)
+  //   and     newval,incr2,mask
+  //   and     maskedoldval0,oldval,mask3
+  //   or      storeval,maskedoldval0,newval
+  //   sc      success,storeval,0(alignedaddr)
+  //   beq     success,$0,loopMBB
+
+  BB = loopMBB;
+  unsigned LL = HCPU::LL;
+  BuildMI(BB, DL, TII->get(LL), OldVal).addReg(AlignedAddr).addImm(0);
+  if (Nand) {
+    //  and andres, oldval, incr2
+    //  xor binopres,  $0, andres
+    //  xor binopres2, $0, binopres
+    //  and newval, binopres, mask
+    BuildMI(BB, DL, TII->get(HCPU::AND), AndRes).addReg(OldVal).addReg(Incr2);
+    BuildMI(BB, DL, TII->get(HCPU::XOR), BinOpRes)
+      .addReg(HCPU::ZERO).addReg(AndRes);
+    BuildMI(BB, DL, TII->get(HCPU::XOR), BinOpRes2)
+      .addReg(HCPU::ZERO).addReg(BinOpRes);
+    BuildMI(BB, DL, TII->get(HCPU::AND), NewVal).addReg(BinOpRes).addReg(Mask);
+  } else if (BinOpcode) {
+    //  <binop> binopres, oldval, incr2
+    //  and newval, binopres, mask
+    BuildMI(BB, DL, TII->get(BinOpcode), BinOpRes).addReg(OldVal).addReg(Incr2);
+    BuildMI(BB, DL, TII->get(HCPU::AND), NewVal).addReg(BinOpRes).addReg(Mask);
+  } else { // atomic.swap
+    //  and newval, incr2, mask
+    BuildMI(BB, DL, TII->get(HCPU::AND), NewVal).addReg(Incr2).addReg(Mask);
+  }
+
+  BuildMI(BB, DL, TII->get(HCPU::AND), MaskedOldVal0)
+    .addReg(OldVal).addReg(Mask2);
+  BuildMI(BB, DL, TII->get(HCPU::OR), StoreVal)
+    .addReg(MaskedOldVal0).addReg(NewVal);
+  unsigned SC = HCPU::SC;
+  BuildMI(BB, DL, TII->get(SC), Success)
+    .addReg(StoreVal).addReg(AlignedAddr).addImm(0);
+  BuildMI(BB, DL, TII->get(HCPU::BEQ))
+    .addReg(Success).addReg(HCPU::ZERO).addMBB(loopMBB);
+
+  //  sinkMBB:
+  //    and     maskedoldval1,oldval,mask
+  //    srl     srlres,maskedoldval1,shiftamt
+  //    sign_extend dest,srlres
+  BB = sinkMBB;
+
+  BuildMI(BB, DL, TII->get(HCPU::AND), MaskedOldVal1)
+    .addReg(OldVal).addReg(Mask);
+  BuildMI(BB, DL, TII->get(HCPU::SHRV), SrlRes)
+      .addReg(MaskedOldVal1).addReg(ShiftAmt);
+  BB = emitSignExtendToI32InReg(MI, BB, Size, Dest, SrlRes);
+
+  MI.eraseFromParent(); // The instruction is gone now.
+
+  return exitMBB;
+}
+
+MachineBasicBlock * HCPUTargetLowering::emitAtomicCmpSwap(MachineInstr &MI,
+                                                          MachineBasicBlock *BB,
+                                                          unsigned Size) const {
+  assert((Size == 4) && "Unsupported size for EmitAtomicCmpSwap.");
+
+  MachineFunction *MF = BB->getParent();
+  MachineRegisterInfo &RegInfo = MF->getRegInfo();
+  const TargetRegisterClass *RC = getRegClassFor(MVT::getIntegerVT(Size * 8));
+  const TargetInstrInfo *TII = Subtarget.getInstrInfo();
+  DebugLoc DL = MI.getDebugLoc();
+  unsigned LL, SC, ZERO, BNE, BEQ;
+
+  LL = HCPU::LL;
+  SC = HCPU::SC;
+  ZERO = HCPU::ZERO;
+  BNE = HCPU::BNE;
+  BEQ = HCPU::BEQ;
+
+  unsigned Dest    = MI.getOperand(0).getReg();
+  unsigned Ptr     = MI.getOperand(1).getReg();
+  unsigned OldVal  = MI.getOperand(2).getReg();
+  unsigned NewVal  = MI.getOperand(3).getReg();
+
+  unsigned Success = RegInfo.createVirtualRegister(RC);
+
+  // insert new blocks after the current block
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+  MachineBasicBlock *loop1MBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *loop2MBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *exitMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineFunction::iterator It = ++BB->getIterator();
+
+  MF->insert(It, loop1MBB);
+  MF->insert(It, loop2MBB);
+  MF->insert(It, exitMBB);
+
+  // Transfer the remainder of BB and its successor edges to exitMBB.
+  exitMBB->splice(exitMBB->begin(), BB,
+                  std::next(MachineBasicBlock::iterator(MI)), BB->end());
+  exitMBB->transferSuccessorsAndUpdatePHIs(BB);
+
+  //  thisMBB:
+  //    ...
+  //    fallthrough --> loop1MBB
+  BB->addSuccessor(loop1MBB);
+  loop1MBB->addSuccessor(exitMBB);
+  loop1MBB->addSuccessor(loop2MBB);
+  loop2MBB->addSuccessor(loop1MBB);
+  loop2MBB->addSuccessor(exitMBB);
+
+  // loop1MBB:
+  //   ll dest, 0(ptr)
+  //   bne dest, oldval, exitMBB
+  BB = loop1MBB;
+  BuildMI(BB, DL, TII->get(LL), Dest).addReg(Ptr).addImm(0);
+  BuildMI(BB, DL, TII->get(BNE))
+    .addReg(Dest).addReg(OldVal).addMBB(exitMBB);
+
+  // loop2MBB:
+  //   sc success, newval, 0(ptr)
+  //   beq success, $0, loop1MBB
+  BB = loop2MBB;
+  BuildMI(BB, DL, TII->get(SC), Success)
+    .addReg(NewVal).addReg(Ptr).addImm(0);
+  BuildMI(BB, DL, TII->get(BEQ))
+    .addReg(Success).addReg(ZERO).addMBB(loop1MBB);
+
+  MI.eraseFromParent(); // The instruction is gone now.
+
+  return exitMBB;
+}
+
+MachineBasicBlock *
+HCPUTargetLowering::emitAtomicCmpSwapPartword(MachineInstr &MI,
+                                              MachineBasicBlock *BB,
+                                              unsigned Size) const {
+  assert((Size == 1 || Size == 2) &&
+      "Unsupported size for EmitAtomicCmpSwapPartial.");
+
+  MachineFunction *MF = BB->getParent();
+  MachineRegisterInfo &RegInfo = MF->getRegInfo();
+  const TargetRegisterClass *RC = getRegClassFor(MVT::i32);
+  const TargetInstrInfo *TII = Subtarget.getInstrInfo();
+  DebugLoc DL = MI.getDebugLoc();
+
+  unsigned Dest    = MI.getOperand(0).getReg();
+  unsigned Ptr     = MI.getOperand(1).getReg();
+  unsigned CmpVal  = MI.getOperand(2).getReg();
+  unsigned NewVal  = MI.getOperand(3).getReg();
+
+  unsigned AlignedAddr = RegInfo.createVirtualRegister(RC);
+  unsigned ShiftAmt = RegInfo.createVirtualRegister(RC);
+  unsigned Mask = RegInfo.createVirtualRegister(RC);
+  unsigned Mask2 = RegInfo.createVirtualRegister(RC);
+  unsigned Mask3 = RegInfo.createVirtualRegister(RC);
+  unsigned ShiftedCmpVal = RegInfo.createVirtualRegister(RC);
+  unsigned OldVal = RegInfo.createVirtualRegister(RC);
+  unsigned MaskedOldVal0 = RegInfo.createVirtualRegister(RC);
+  unsigned ShiftedNewVal = RegInfo.createVirtualRegister(RC);
+  unsigned MaskLSB2 = RegInfo.createVirtualRegister(RC);
+  unsigned PtrLSB2 = RegInfo.createVirtualRegister(RC);
+  unsigned MaskUpper = RegInfo.createVirtualRegister(RC);
+  unsigned MaskedCmpVal = RegInfo.createVirtualRegister(RC);
+  unsigned MaskedNewVal = RegInfo.createVirtualRegister(RC);
+  unsigned MaskedOldVal1 = RegInfo.createVirtualRegister(RC);
+  unsigned StoreVal = RegInfo.createVirtualRegister(RC);
+  unsigned SrlRes = RegInfo.createVirtualRegister(RC);
+  unsigned Success = RegInfo.createVirtualRegister(RC);
+
+  // insert new blocks after the current block
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+  MachineBasicBlock *loop1MBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *loop2MBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *sinkMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *exitMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineFunction::iterator It = ++BB->getIterator();
+
+  MF->insert(It, loop1MBB);
+  MF->insert(It, loop2MBB);
+  MF->insert(It, sinkMBB);
+  MF->insert(It, exitMBB);
+
+  // Transfer the remainder of BB and its successor edges to exitMBB.
+  exitMBB->splice(exitMBB->begin(), BB,
+                  std::next(MachineBasicBlock::iterator(MI)), BB->end());
+  exitMBB->transferSuccessorsAndUpdatePHIs(BB);
+
+  BB->addSuccessor(loop1MBB);
+  loop1MBB->addSuccessor(sinkMBB);
+  loop1MBB->addSuccessor(loop2MBB);
+  loop2MBB->addSuccessor(loop1MBB);
+  loop2MBB->addSuccessor(sinkMBB);
+  sinkMBB->addSuccessor(exitMBB);
+
+  // FIXME: computation of newval2 can be moved to loop2MBB.
+  //  thisMBB:
+  //    addiu   masklsb2,$0,-4                # 0xfffffffc
+  //    and     alignedaddr,ptr,masklsb2
+  //    andi    ptrlsb2,ptr,3
+  //    shl     shiftamt,ptrlsb2,3
+  //    ori     maskupper,$0,255               # 0xff
+  //    shl     mask,maskupper,shiftamt
+  //    xor     mask2,$0,mask
+  //    xor     mask3,$0,mask2
+  //    andi    maskedcmpval,cmpval,255
+  //    shl     shiftedcmpval,maskedcmpval,shiftamt
+  //    andi    maskednewval,newval,255
+  //    shl     shiftednewval,maskednewval,shiftamt
+  int64_t MaskImm = (Size == 1) ? 255 : 65535;
+  BuildMI(BB, DL, TII->get(HCPU::ADDiu), MaskLSB2)
+    .addReg(HCPU::ZERO).addImm(-4);
+  BuildMI(BB, DL, TII->get(HCPU::AND), AlignedAddr)
+    .addReg(Ptr).addReg(MaskLSB2);
+  BuildMI(BB, DL, TII->get(HCPU::ANDi), PtrLSB2).addReg(Ptr).addImm(3);
+  if (Subtarget.isLittle()) {
+    BuildMI(BB, DL, TII->get(HCPU::SHL), ShiftAmt).addReg(PtrLSB2).addImm(3);
+  } else {
+    unsigned Off = RegInfo.createVirtualRegister(RC);
+    BuildMI(BB, DL, TII->get(HCPU::XORi), Off)
+      .addReg(PtrLSB2).addImm((Size == 1) ? 3 : 2);
+    BuildMI(BB, DL, TII->get(HCPU::SHL), ShiftAmt).addReg(Off).addImm(3);
+  }
+  BuildMI(BB, DL, TII->get(HCPU::ORi), MaskUpper)
+    .addReg(HCPU::ZERO).addImm(MaskImm);
+  BuildMI(BB, DL, TII->get(HCPU::SHLV), Mask)
+    .addReg(MaskUpper).addReg(ShiftAmt);
+  BuildMI(BB, DL, TII->get(HCPU::XOR), Mask2).addReg(HCPU::ZERO).addReg(Mask);
+  BuildMI(BB, DL, TII->get(HCPU::XOR), Mask3).addReg(HCPU::ZERO).addReg(Mask2);
+  BuildMI(BB, DL, TII->get(HCPU::ANDi), MaskedCmpVal)
+    .addReg(CmpVal).addImm(MaskImm);
+  BuildMI(BB, DL, TII->get(HCPU::SHLV), ShiftedCmpVal)
+    .addReg(MaskedCmpVal).addReg(ShiftAmt);
+  BuildMI(BB, DL, TII->get(HCPU::ANDi), MaskedNewVal)
+    .addReg(NewVal).addImm(MaskImm);
+  BuildMI(BB, DL, TII->get(HCPU::SHLV), ShiftedNewVal)
+    .addReg(MaskedNewVal).addReg(ShiftAmt);
+
+  //  loop1MBB:
+  //    ll      oldval,0(alginedaddr)
+  //    and     maskedoldval0,oldval,mask
+  //    bne     maskedoldval0,shiftedcmpval,sinkMBB
+  BB = loop1MBB;
+  unsigned LL = HCPU::LL;
+  BuildMI(BB, DL, TII->get(LL), OldVal).addReg(AlignedAddr).addImm(0);
+  BuildMI(BB, DL, TII->get(HCPU::AND), MaskedOldVal0)
+    .addReg(OldVal).addReg(Mask);
+  BuildMI(BB, DL, TII->get(HCPU::BNE))
+    .addReg(MaskedOldVal0).addReg(ShiftedCmpVal).addMBB(sinkMBB);
+
+  //  loop2MBB:
+  //    and     maskedoldval1,oldval,mask3
+  //    or      storeval,maskedoldval1,shiftednewval
+  //    sc      success,storeval,0(alignedaddr)
+  //    beq     success,$0,loop1MBB
+  BB = loop2MBB;
+  BuildMI(BB, DL, TII->get(HCPU::AND), MaskedOldVal1)
+    .addReg(OldVal).addReg(Mask3);
+  BuildMI(BB, DL, TII->get(HCPU::OR), StoreVal)
+    .addReg(MaskedOldVal1).addReg(ShiftedNewVal);
+  unsigned SC = HCPU::SC;
+  BuildMI(BB, DL, TII->get(SC), Success)
+      .addReg(StoreVal).addReg(AlignedAddr).addImm(0);
+  BuildMI(BB, DL, TII->get(HCPU::BEQ))
+      .addReg(Success).addReg(HCPU::ZERO).addMBB(loop1MBB);
+
+  //  sinkMBB:
+  //    srl     srlres,maskedoldval0,shiftamt
+  //    sign_extend dest,srlres
+  BB = sinkMBB;
+
+  BuildMI(BB, DL, TII->get(HCPU::SHRV), SrlRes)
+      .addReg(MaskedOldVal0).addReg(ShiftAmt);
+  BB = emitSignExtendToI32InReg(MI, BB, Size, Dest, SrlRes);
+
+  MI.eraseFromParent();   // The instruction is gone now.
+
+  return exitMBB;
+}
+SDValue HCPUTargetLowering::lowerATOMIC_FENCE(SDValue Op,
+                                              SelectionDAG &DAG) const {
+  // FIXME: Need pseudo-fence for 'singlethread' fences
+  // FIXME: Set SType for weaker fences where supported/appropriate.
+  unsigned SType = 0;
+  SDLoc DL(Op);
+  return DAG.getNode(HCPUISD::Sync, DL, MVT::Other, Op.getOperand(0),
+                     DAG.getConstant(SType, DL, MVT::i32));
 }

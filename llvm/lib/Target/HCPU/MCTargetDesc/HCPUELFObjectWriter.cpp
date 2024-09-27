@@ -21,22 +21,23 @@
 using namespace llvm;
 
 namespace {
-  class HCPUELFObjectWriter : public MCELFObjectTargetWriter {
-  public:
-    HCPUELFObjectWriter(uint8_t OSABI, bool HasRelocationAddend, bool Is64);
+class HCPUELFObjectWriter : public MCELFObjectTargetWriter {
+public:
+  HCPUELFObjectWriter(uint8_t OSABI, bool HasRelocationAddend, bool Is64);
 
-	~HCPUELFObjectWriter() = default;
+  ~HCPUELFObjectWriter() = default;
 
-    unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
+  unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
                         const MCFixup &Fixup, bool IsPCRel) const override;
-    bool needsRelocateWithSymbol(const MCValue &Val, const MCSymbol &Sym,
-                                       unsigned Type) const override;
-  };
-}
+  bool needsRelocateWithSymbol(const MCValue &Val, const MCSymbol &Sym,
+                               unsigned Type) const override;
+};
+} // namespace
 
 HCPUELFObjectWriter::HCPUELFObjectWriter(uint8_t OSABI,
                                          bool HasRelocationAddend, bool Is64)
-    : MCELFObjectTargetWriter(/*Is64Bit_=false*/ Is64, OSABI, ELF::EM_HCPU,
+    : MCELFObjectTargetWriter(
+          /*Is64Bit_=false*/ Is64, OSABI, ELF::EM_HCPU,
           /*HasRelocationAddend_ = false*/ HasRelocationAddend) {}
 
 //@GetRelocType {
@@ -75,8 +76,14 @@ unsigned HCPUELFObjectWriter::getRelocType(MCContext &Ctx,
   case HCPU::fixup_HCPU_GOT_LO16:
     Type = ELF::R_HCPU_GOT_LO16;
     break;
-    case HCPU::fixup_HCPU_CALL16:
+  case HCPU::fixup_HCPU_CALL16:
     Type = ELF::R_HCPU_CALL16;
+    break;
+  case HCPU::fixup_HCPU_TLSGD:
+    Type = ELF::R_HCPU_TLS_GD;
+    break;
+  case HCPU::fixup_HCPU_GOTTPREL:
+    Type = ELF::R_HCPU_TLS_GOTTPREL;
     break;
   }
 
@@ -84,9 +91,9 @@ unsigned HCPUELFObjectWriter::getRelocType(MCContext &Ctx,
 }
 //@GetRelocType }
 
-bool
-HCPUELFObjectWriter::needsRelocateWithSymbol(const MCValue &Val, const MCSymbol &Sym,
-                                             unsigned Type) const {
+bool HCPUELFObjectWriter::needsRelocateWithSymbol(const MCValue &Val,
+                                                  const MCSymbol &Sym,
+                                                  unsigned Type) const {
   // FIXME: This is extremelly conservative. This really needs to use a
   // whitelist with a clear explanation for why each realocation needs to
   // point to the symbol, not to the section.
@@ -95,8 +102,8 @@ HCPUELFObjectWriter::needsRelocateWithSymbol(const MCValue &Val, const MCSymbol 
     return true;
 
   case ELF::R_HCPU_GOT16:
-  // For HCPU pic mode, I think it's OK to return true but I didn't confirm.
-  //  llvm_unreachable("Should have been handled already");
+    // For HCPU pic mode, I think it's OK to return true but I didn't confirm.
+    //  llvm_unreachable("Should have been handled already");
     return true;
 
   // These relocations might be paired with another relocation. The pairing is
@@ -106,7 +113,7 @@ HCPUELFObjectWriter::needsRelocateWithSymbol(const MCValue &Val, const MCSymbol 
   // points to a symbol.
   case ELF::R_HCPU_HI16:
   case ELF::R_HCPU_LO16:
-  // R_HCPU_32 should be a relocation record, I don't know why Mips set it to 
+  // R_HCPU_32 should be a relocation record, I don't know why Mips set it to
   // false.
   case ELF::R_HCPU_32:
     return true;
@@ -116,7 +123,7 @@ HCPUELFObjectWriter::needsRelocateWithSymbol(const MCValue &Val, const MCSymbol 
   }
 }
 
-std::unique_ptr<MCObjectTargetWriter> 
+std::unique_ptr<MCObjectTargetWriter>
 llvm::createHCPUELFObjectWriter(const Triple &TT) {
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TT.getOS());
   bool IsN64 = false;

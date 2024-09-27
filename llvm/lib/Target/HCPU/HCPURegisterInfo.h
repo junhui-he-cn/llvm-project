@@ -50,6 +50,10 @@ public:
   Register getFrameRegister(const MachineFunction &MF) const override;
 
   virtual const TargetRegisterClass *intRegClass(unsigned Size) const = 0;
+
+  /// Code Generation virtual methods...
+  const TargetRegisterClass *getPointerRegClass(const MachineFunction &MF,
+                                                unsigned Kind) const override;
 };
 } // namespace llvm
 

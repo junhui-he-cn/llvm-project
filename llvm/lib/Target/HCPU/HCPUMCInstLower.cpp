@@ -145,6 +145,27 @@ MCOperand HCPUMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
   case HCPUII::MO_GOT_CALL:
     TargetKind = HCPUMCExpr::CEK_GOT_CALL;
     break;
+    case HCPUII::MO_TLSGD:
+    TargetKind = HCPUMCExpr::CEK_TLSGD;
+    break;
+  case HCPUII::MO_TLSLDM:
+    TargetKind = HCPUMCExpr::CEK_TLSLDM;
+    break;
+  case HCPUII::MO_DTP_HI:
+    TargetKind = HCPUMCExpr::CEK_DTP_HI;
+    break;
+  case HCPUII::MO_DTP_LO:
+    TargetKind = HCPUMCExpr::CEK_DTP_LO;
+    break;
+  case HCPUII::MO_GOTTPREL:
+    TargetKind = HCPUMCExpr::CEK_GOTTPREL;
+    break;
+  case HCPUII::MO_TP_HI:
+    TargetKind = HCPUMCExpr::CEK_TP_HI;
+    break;
+  case HCPUII::MO_TP_LO:
+    TargetKind = HCPUMCExpr::CEK_TP_LO;
+    break;
   }
 
   switch (MOTy) {

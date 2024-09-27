@@ -191,3 +191,9 @@ Register HCPURegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
   return TFI->hasFP(MF) ? (HCPU::FP) : (HCPU::SP);
 }
+
+const TargetRegisterClass *
+HCPURegisterInfo::getPointerRegClass(const MachineFunction &MF,
+                                     unsigned Kind) const {
+  return &HCPU::CPURegsRegClass;
+}

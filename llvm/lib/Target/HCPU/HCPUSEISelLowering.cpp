@@ -38,6 +38,8 @@ HCPUSETargetLowering::HCPUSETargetLowering(const HCPUTargetMachine &TM,
     : HCPUTargetLowering(TM, STI) {
   addRegisterClass(MVT::i32, &HCPU::CPURegsRegClass);
 
+  setOperationAction(ISD::ATOMIC_FENCE,       MVT::Other, Custom);
+
   // must, computeRegisterProperties - Once all of the register classes are
   //  added, this allows us to compute derived properties we expose.
   computeRegisterProperties(Subtarget.getRegisterInfo());

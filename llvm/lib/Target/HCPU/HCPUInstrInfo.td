@@ -958,3 +958,95 @@ class LoadAddressImm<string instr_asm, Operand Od, RegisterClass RC> :
   HCPUAsmPseudoInst<(outs RC:$ra), (ins Od:$imm32),
                      !strconcat(instr_asm, "\t$ra, $imm32")> ;
 def LoadAddr32Imm : LoadAddressImm<"la", shamt, GPROut>;
+
+
+// TlsGd node is used to handle General Dynamic TLS
+def HCPUTlsGd : SDNode<"HCPUISD::TlsGd", SDTIntUnaryOp>;
+
+// TpHi and TpLo nodes are used to handle Local Exec TLS
+def HCPUTpHi  : SDNode<"HCPUISD::TpHi", SDTIntUnaryOp>;
+def HCPUTpLo  : SDNode<"HCPUISD::TpLo", SDTIntUnaryOp>;
+
+def : Pat<(HCPUHi tglobaltlsaddr:$in), (LUi tglobaltlsaddr:$in)>;
+
+def : Pat<(HCPULo tglobaltlsaddr:$in), (ORi ZERO, tglobaltlsaddr:$in)>;
+
+def : Pat<(add CPURegs:$hi, (HCPULo tglobaltlsaddr:$lo)),
+              (ORi CPURegs:$hi, tglobaltlsaddr:$lo)>;
+
+def : WrapperPat<tglobaltlsaddr, ORi, CPURegs>;
+
+def SDT_Sync             : SDTypeProfile<0, 1, [SDTCisVT<0, i32>]>;
+def HCPUSync : SDNode<"HCPUISD::Sync", SDT_Sync, [SDNPHasChain]>;
+def PtrRC : Operand<iPTR> {
+  let MIOperandInfo = (ops ptr_rc);
+  let DecoderMethod = "DecodeCPURegsRegisterClass";
+}
+// Atomic instructions with 2 source operands (ATOMIC_SWAP & ATOMIC_LOAD_*).
+class Atomic2Ops<PatFrag Op, RegisterClass DRC> :
+  PseudoSE<(outs DRC:$dst), (ins PtrRC:$ptr, DRC:$incr),
+           [(set DRC:$dst, (Op iPTR:$ptr, DRC:$incr))]>;
+
+// Atomic Compare & Swap.
+class AtomicCmpSwap<PatFrag Op, RegisterClass DRC> :
+  PseudoSE<(outs DRC:$dst), (ins PtrRC:$ptr, DRC:$cmp, DRC:$swap),
+           [(set DRC:$dst, (Op iPTR:$ptr, DRC:$cmp, DRC:$swap))]>;
+class LLBase<bits<8> Opc, string opstring, RegisterClass RC, Operand Mem> :
+  FMem<Opc, (outs RC:$ra), (ins Mem:$addr),
+       !strconcat(opstring, "\t$ra, $addr"), [], IILoad> {
+  let mayLoad = 1;
+}
+
+class SCBase<bits<8> Opc, string opstring, RegisterOperand RO, Operand Mem> :
+  FMem<Opc, (outs RO:$dst), (ins RO:$ra, Mem:$addr),
+       !strconcat(opstring, "\t$ra, $addr"), [], IIStore> {
+  let mayStore = 1;
+  let Constraints = "$ra = $dst";
+}
+
+let usesCustomInserter = 1 in {
+  def ATOMIC_LOAD_ADD_I8   : Atomic2Ops<atomic_load_add_i8, CPURegs>;
+  def ATOMIC_LOAD_ADD_I16  : Atomic2Ops<atomic_load_add_i16, CPURegs>;
+  def ATOMIC_LOAD_ADD_I32  : Atomic2Ops<atomic_load_add_i32, CPURegs>;
+  def ATOMIC_LOAD_SUB_I8   : Atomic2Ops<atomic_load_sub_i8, CPURegs>;
+  def ATOMIC_LOAD_SUB_I16  : Atomic2Ops<atomic_load_sub_i16, CPURegs>;
+  def ATOMIC_LOAD_SUB_I32  : Atomic2Ops<atomic_load_sub_i32, CPURegs>;
+  def ATOMIC_LOAD_AND_I8   : Atomic2Ops<atomic_load_and_i8, CPURegs>;
+  def ATOMIC_LOAD_AND_I16  : Atomic2Ops<atomic_load_and_i16, CPURegs>;
+  def ATOMIC_LOAD_AND_I32  : Atomic2Ops<atomic_load_and_i32, CPURegs>;
+  def ATOMIC_LOAD_OR_I8    : Atomic2Ops<atomic_load_or_i8, CPURegs>;
+  def ATOMIC_LOAD_OR_I16   : Atomic2Ops<atomic_load_or_i16, CPURegs>;
+  def ATOMIC_LOAD_OR_I32   : Atomic2Ops<atomic_load_or_i32, CPURegs>;
+  def ATOMIC_LOAD_XOR_I8   : Atomic2Ops<atomic_load_xor_i8, CPURegs>;
+  def ATOMIC_LOAD_XOR_I16  : Atomic2Ops<atomic_load_xor_i16, CPURegs>;
+  def ATOMIC_LOAD_XOR_I32  : Atomic2Ops<atomic_load_xor_i32, CPURegs>;
+  def ATOMIC_LOAD_NAND_I8  : Atomic2Ops<atomic_load_nand_i8, CPURegs>;
+  def ATOMIC_LOAD_NAND_I16 : Atomic2Ops<atomic_load_nand_i16, CPURegs>;
+  def ATOMIC_LOAD_NAND_I32 : Atomic2Ops<atomic_load_nand_i32, CPURegs>;
+
+  def ATOMIC_SWAP_I8       : Atomic2Ops<atomic_swap_i8, CPURegs>;
+  def ATOMIC_SWAP_I16      : Atomic2Ops<atomic_swap_i16, CPURegs>;
+  def ATOMIC_SWAP_I32      : Atomic2Ops<atomic_swap_i32, CPURegs>;
+
+  def ATOMIC_CMP_SWAP_I8   : AtomicCmpSwap<atomic_cmp_swap_i8, CPURegs>;
+  def ATOMIC_CMP_SWAP_I16  : AtomicCmpSwap<atomic_cmp_swap_i16, CPURegs>;
+  def ATOMIC_CMP_SWAP_I32  : AtomicCmpSwap<atomic_cmp_swap_i32, CPURegs>;
+}
+
+
+let hasSideEffects = 1 in
+def SYNC : HCPUInst<(outs), (ins i32imm:$stype), "sync $stype",
+                    [(HCPUSync imm:$stype)], NoItinerary, FrmOther>
+{
+  bits<5> stype;
+  let Opcode = 0x60;
+  let Inst{25-11} = 0;
+  let Inst{10-6} = stype;
+  let Inst{5-0} = 0;
+}
+
+/// Load-linked, Store-conditional
+def LL      : LLBase<0x61, "ll", CPURegs, mem>;
+def SC      : SCBase<0x62, "sc", RegisterOperand<CPURegs>, mem>;
+def : HCPUInstAlias<"sync",
+                    (SYNC 0), 1>;
